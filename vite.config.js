@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
 import Pages from 'vite-plugin-pages'
+import { Van } from '@element-plus/icons-vue'
 
 
 
@@ -15,9 +16,11 @@ export default defineConfig({
         extensions: ['vue'],
       // 忽略指定文件/目录（可选）
         exclude: ['**/components/*.vue'],
-      // 路由命名规则（默认 kebab-case，可改为 PascalCase 等）
+      
         importMode: 'async', // 异步导入（懒加载）
       })
+     
+     
     ],
     resolve: {
       alias: {
