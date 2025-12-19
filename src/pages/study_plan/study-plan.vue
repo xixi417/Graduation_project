@@ -1,308 +1,516 @@
 <template>
-  <div class="goal-setting-page">
-    <!-- 页面标题 -->
-    <van-nav-bar title="设置学习目标" left-arrow @click-left="handleBack" />
-
-    <!-- 目标基本信息 -->
-    <van-card class="basic-info-card">
-      <div slot="title">基本信息</div>
-      <van-form @submit="handleSubmit">
-        <!-- 目标名称 -->
-        <van-field
-          v-model="goalForm.name"
-          label="目标名称"
-          placeholder="例如：3个月掌握Vue3"
-          required
-        />
-
-        <!-- 学习周期 -->
-        <van-field label="学习周期">
-          <template #input>
-            <van-datetime-picker
-              v-model="cycleValue"
-              type="daterange"
-              title="选择学习周期"
-              @confirm="handleCycleConfirm"
-            />
-            <span class="cycle-text">{{ cycleText }}</span>
-          </template>
-        </van-field>
-
-        <!-- 每日学习时长 -->
-        <van-field label="每日学习时长">
-          <template #input>
-            <van-slider
-              v-model="dailyDuration"
-              min="0.5"
-              max="8"
-              step="0.5"
-              @change="handleDurationChange"
-            />
-            <span class="duration-text">{{ dailyDuration }} 小时/天</span>
-          </template>
-        </van-field>
-
-        <!-- 具体任务区域 -->
-        <div class="task-section">
-          <div class="section-title">
-            <span>具体任务</span>
-            <van-button size="mini" type="primary" @click="addNewTask">
-              + 添加任务
-            </van-button>
+  <div class="page-container">
+    <!-- 任务列表区域 -->
+    <div class="task-list">
+      <!-- 任务项（循环渲染） -->
+      <div 
+        v-for="(task, taskIndex) in taskList" 
+        :key="task.id" 
+        class="task-card"
+      >
+        <!-- 任务头部 -->
+        <div class="task-header">
+          <!-- 任务名称+铅笔编辑按钮 -->
+          <div class="task-title-wrap">
+            <span class="task-title-text">{{ task.title }}</span>
+            <button class="edit-btn" @click.stop="openEditModal('task', taskIndex)">
+              ✏️
+            </button>
           </div>
-
-          <!-- 自定义任务列表 -->
-          <div class="custom-task-list">
-            <task-item
-              v-for="(task, index) in customTasks"
-              :key="index"
-              :task="task"
-              @delete="deleteCustomTask(index)"
-              @update="updateCustomTask(index, $event)"
-            />
-          </div>
-
-          <!-- 系统推荐任务 -->
-          <div v-if="recommendTasks.length" class="recommend-task-section">
-            <div class="section-subtitle">系统推荐任务</div>
-            <recommend-task
-              v-for="(task, index) in recommendTasks"
-              :key="index"
-              :task="task"
-              @select="selectRecommendTask(task)"
-              @cancel="cancelRecommendTask(task)"
-            />
-          </div>
-
-          <!-- 生成推荐任务按钮 -->
-          <van-button
-            v-if="!recommendTasks.length && customTasks.length"
-            size="mini"
-            type="default"
-            @click="generateRecommendTasks"
-            class="generate-btn"
+          <!-- 展开/收起箭头 -->
+          <span 
+            class="expand-arrow" 
+            :class="{ 'expanded': task.isExpanded }"
+            @click.stop="toggleSubtask(taskIndex)"
           >
-            生成系统推荐任务
-          </van-button>
+            ▼
+          </span>
+          <!-- 删除任务按钮（❌） -->
+          <button class="delete-btn" @click.stop="handleDeleteTask(task.id, taskIndex)">
+            ❌
+          </button>
         </div>
 
-        <!-- 提交按钮 -->
-        <div class="submit-btn-wrap">
-          <van-button type="primary" native-type="submit" block>
-            保存学习目标
-          </van-button>
+        <!-- 子任务区域（展开/收起） -->
+        <div class="subtask-container" v-if="task.isExpanded">
+          <!-- 子任务列表 -->
+          <div 
+            v-for="(subtask, subtaskIndex) in task.subtasks" 
+            :key="subtask.id" 
+            class="subtask-item"
+          >
+            <!-- 子任务名称+铅笔编辑按钮 -->
+            <div class="subtask-title-wrap">
+              <span class="subtask-text">{{ subtask.content }}</span>
+              <button class="edit-btn subtask-edit-btn" @click.stop="openEditModal('subtask', taskIndex, subtaskIndex)">
+                ✏️
+              </button>
+            </div>
+            <!-- 删除子任务按钮 -->
+            <button class="delete-btn subtask-delete-btn" @click.stop="handleDeleteSubtask(taskIndex, subtaskIndex)">
+              ❌
+            </button>
+          </div>
+
+          <!-- 添加子任务按钮 -->
+          <button class="add-subtask-btn" @click.stop="openEditModal('addSubtask', taskIndex)">
+            ➕ 点击添加子任务
+          </button>
         </div>
-      </van-form>
-    </van-card>
+      </div>
+
+      <!-- 空任务提示 -->
+      <div class="empty-tip" v-if="taskList.length === 0">
+        暂无任务，点击下方“新设目标”创建吧~
+      </div>
+    </div>
+
+    <!-- 新设目标按钮 -->
+    <button class="new-plan-btn" @click="navigateToNewPlan">
+      新设目标
+    </button>
+
+    <!-- 4. 底部常驻Tab栏 -->
+    <div class="tab-bar">
+      <div 
+        class="tab-item" 
+        v-for="item in tabList" 
+        :key="item.name"
+        :class="{ active: activeTab === item.name }"
+        @click="handleTabClick(item)"
+      >
+        <component :is="item.icon" size="24" />
+        <div class="tab-name">{{ item.name }}</div>
+      </div>
+    </div>
+
+    <!-- 编辑/添加表单弹窗 -->
+    <div class="modal-mask" v-if="modalVisible" @click="closeModal">
+      <div class="modal-content" @click.stop>
+        <h3 class="modal-title">{{ modalTitle }}</h3>
+        <input 
+          v-model="modalFormValue" 
+          type="text" 
+          class="modal-input" 
+          placeholder="请输入内容"
+          @keyup.enter="submitModalForm"
+        >
+        <div class="modal-btn-group">
+          <button class="modal-btn cancel-btn" @click="closeModal">取消</button>
+          <button class="modal-btn confirm-btn" @click="submitModalForm">确认</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
-import { showToast } from 'vant';
-import TaskItem from './components/TaskItem.vue';
-import RecommendTask from './components/RecommendTask.vue';
-import { useLearningStore } from '@/store/learning';
-import { formatDateRange } from '@/utils/date';
+import { ref, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
+import * as studyPlanApi from './study-plan';
+import { 
+  House, Flag, Star, Timer, User
+} from '@element-plus/icons-vue'
 
-// 状态管理
-const learningStore = useLearningStore();
+// 路由实例
+const router = useRouter();
 
-// 页面返回
-const handleBack = () => {
-  uni.navigateBack(); // 微信小程序返回API
-};
+// 激活的底部Tab
+const activeTab = ref('首页')
 
-// 目标表单数据
-const goalForm = ref({
-  name: '',
-  cycleStart: '',
-  cycleEnd: '',
-  dailyDuration: 2, // 默认每日2小时
+// 任务列表（本地+数据库同步）
+const taskList = ref([]);
+
+// 弹窗相关状态
+const modalVisible = ref(false); // 弹窗显示状态
+const modalType = ref(''); // 弹窗类型：task/subtask/addSubtask
+const modalTargetIndex = ref({ task: 0, subtask: 0 }); // 目标索引
+const modalTitle = ref(''); // 弹窗标题
+const modalFormValue = ref(''); // 表单输入值
+
+// 底部Tab列表
+const tabList = ref([
+  { name: '首页', icon: House, path: '/Home' },
+  { name: '计划', icon: Flag, path: '/study_plan/study-plan' },
+  { name: '推荐', icon: Star, path: '/content-recommend' },
+  { name: '进度', icon: Timer, path: '/progress-record' },
+  { name: '个人', icon: User, path: '/personal_center/profile' }
+])
+
+// 页面挂载时加载任务
+onMounted(async () => {
+  await fetchTaskList();
 });
 
-// 学习周期选择器值
-const cycleValue = ref([]);
-const cycleText = ref('请选择学习周期');
+// 底部Tab点击跳转+激活状态
+const handleTabClick = (item) => {
+  activeTab.value = item.name
+  router.push(item.path)
+}
 
-// 每日学习时长
-const dailyDuration = ref(2);
 
-// 自定义任务列表
-const customTasks = ref([
-  { content: '', duration: 1, isCompleted: false } // 默认空任务
-]);
-
-// 系统推荐任务
-const recommendTasks = ref([]);
-
-// 处理周期选择确认
-const handleCycleConfirm = (value) => {
-  const [start, end] = value;
-  goalForm.value.cycleStart = start;
-  goalForm.value.cycleEnd = end;
-  cycleText.value = formatDateRange(start, end);
-};
-
-// 处理时长变化
-const handleDurationChange = (value) => {
-  dailyDuration.value = value;
-  goalForm.value.dailyDuration = value;
-};
-
-// 添加新任务
-const addNewTask = () => {
-  customTasks.value.push({ content: '', duration: 1, isCompleted: false });
-};
-
-// 删除自定义任务
-const deleteCustomTask = (index) => {
-  if (customTasks.value.length <= 1) {
-    showToast('至少保留一个任务');
-    return;
+// 从数据库获取任务列表
+const fetchTaskList = async () => {
+  try {
+    const res = await studyPlanApi.getTaskList(); 
+    taskList.value = res.data || [];
+    // 初始化每个任务的展开状态
+    taskList.value.forEach(task => {
+      task.isExpanded = false;
+    });
+  } catch (err) {
+    console.error('获取任务失败：', err);
   }
-  customTasks.value.splice(index, 1);
 };
 
-// 更新自定义任务
-const updateCustomTask = (index, task) => {
-  customTasks.value[index] = task;
+// 展开/收起子任务（仅箭头触发）
+const toggleSubtask = (taskIndex) => {
+  taskList.value[taskIndex].isExpanded = !taskList.value[taskIndex].isExpanded;
 };
 
-// 生成系统推荐任务（模拟后端逻辑）
-const generateRecommendTasks = () => {
-  // 模拟系统分析目标生成推荐任务
-  const mockRecommendTasks = [
-    { content: `掌握${goalForm.value.name.split(' ')[-1]}基础语法`, duration: 2, isSelected: false },
-    { content: `完成${goalForm.value.name.split(' ')[-1]}实战案例`, duration: 3, isSelected: false },
-    { content: `复盘${goalForm.value.name.split(' ')[-1]}知识点`, duration: 1, isSelected: false },
-  ];
-  recommendTasks.value = mockRecommendTasks;
-  showToast('已生成推荐任务');
+// 打开编辑/添加弹窗
+const openEditModal = (type, taskIndex, subtaskIndex = 0) => {
+  modalType.value = type;
+  modalTargetIndex.value = { task: taskIndex, subtask: subtaskIndex };
+  modalFormValue.value = '';
+
+  // 设置弹窗标题和初始值
+  switch (type) {
+    case 'task':
+      modalTitle.value = '编辑任务名称';
+      modalFormValue.value = taskList.value[taskIndex].title;
+      break;
+    case 'subtask':
+      modalTitle.value = '编辑子任务内容';
+      modalFormValue.value = taskList.value[taskIndex].subtasks[subtaskIndex].content;
+      break;
+    case 'addSubtask':
+      modalTitle.value = '添加子任务';
+      modalFormValue.value = '';
+      break;
+  }
+
+  modalVisible.value = true;
+  // 自动聚焦输入框（需等DOM渲染完成）
+  setTimeout(() => {
+    document.querySelector('.modal-input')?.focus();
+  }, 100);
 };
 
-// 选择推荐任务
-const selectRecommendTask = (task) => {
-  task.isSelected = true;
-  // 添加到自定义任务
-  customTasks.value.push({
-    content: task.content,
-    duration: task.duration,
-    isCompleted: false,
-    isRecommend: true
-  });
-};
-
-// 取消推荐任务选择
-const cancelRecommendTask = (task) => {
-  task.isSelected = false;
-  // 从自定义任务中移除
-  customTasks.value = customTasks.value.filter(
-    item => !(item.content === task.content && item.isRecommend)
-  );
+// 关闭弹窗
+const closeModal = () => {
+  modalVisible.value = false;
+  modalFormValue.value = '';
 };
 
 // 提交表单
-const handleSubmit = () => {
-  // 表单验证
-  if (!goalForm.value.name) {
-    showToast('请输入目标名称');
-    return;
-  }
-  if (!goalForm.value.cycleStart || !goalForm.value.cycleEnd) {
-    showToast('请选择学习周期');
-    return;
-  }
-  if (!customTasks.value.some(task => task.content.trim())) {
-    showToast('请至少填写一个任务内容');
+const submitModalForm = async () => {
+  const value = modalFormValue.value.trim();
+  if (!value) {
+    // 可替换为轻提示（如Toast）
+    alert('内容不能为空');
     return;
   }
 
-  // 整理目标数据
-  const goalData = {
-    id: Date.now(), // 临时ID
-    name: goalForm.value.name,
-    cycle: {
-      start: goalForm.value.cycleStart,
-      end: goalForm.value.cycleEnd
-    },
-    dailyDuration: goalForm.value.dailyDuration,
-    tasks: customTasks.value.filter(task => task.content.trim()),
-    status: 'inProgress' // 进行中
-  };
+  const { task: taskIdx, subtask: subtaskIdx } = modalTargetIndex.value;
+  let updateTask = null;
 
-  // 保存到状态管理
-  learningStore.addLearningGoal(goalData);
-  
-  showToast('目标保存成功');
-  setTimeout(() => {
-    uni.navigateBack();
-  }, 1500);
+  // 根据类型处理表单提交
+  switch (modalType.value) {
+    case 'task':
+      taskList.value[taskIdx].title = value;
+      updateTask = taskList.value[taskIdx];
+      break;
+    case 'subtask':
+      taskList.value[taskIdx].subtasks[subtaskIdx].content = value;
+      updateTask = taskList.value[taskIdx];
+      break;
+    case 'addSubtask':
+      const newSubtask = {
+        id: Date.now(),
+        content: value
+      };
+      taskList.value[taskIdx].subtasks.push(newSubtask);
+      updateTask = taskList.value[taskIdx];
+      break;
+  }
+
+  // 同步到服务端
+  if (updateTask) {
+    try {
+      await studyPlanApi.updateTask(updateTask.id, updateTask);
+    } catch (err) {
+      console.error('同步数据失败：', err);
+    }
+  }
+
+  // 关闭弹窗
+  closeModal();
 };
 
-onMounted(() => {
-  // 初始化：如果有编辑的目标，加载数据
-  const editGoal = learningStore.currentEditGoal;
-  if (editGoal) {
-    goalForm.value = {
-      name: editGoal.name,
-      cycleStart: editGoal.cycle.start,
-      cycleEnd: editGoal.cycle.end,
-      dailyDuration: editGoal.dailyDuration
-    };
-    cycleValue.value = [editGoal.cycle.start, editGoal.cycle.end];
-    cycleText.value = formatDateRange(editGoal.cycle.start, editGoal.cycle.end);
-    dailyDuration.value = editGoal.dailyDuration;
-    customTasks.value = editGoal.tasks;
+// 删除主任务
+const handleDeleteTask = async (taskId, taskIndex) => {
+  if (confirm('确定删除该任务吗？')) { // 可替换为弹窗确认
+    try {
+      await studyPlanApi.deleteTask(taskId);
+      taskList.value.splice(taskIndex, 1);
+    } catch (err) {
+      console.error('删除任务失败：', err);
+    }
   }
-});
+};
+
+// 删除子任务
+const handleDeleteSubtask = (taskIndex, subtaskIndex) => {
+  if (confirm('确定删除该子任务吗？')) { // 可替换为弹窗确认
+    taskList.value[taskIndex].subtasks.splice(subtaskIndex, 1);
+    updateTaskToServer(taskList.value[taskIndex]);
+  }
+};
+
+// 同步任务到服务端
+const updateTaskToServer = async (task) => {
+  try {
+    await studyPlanApi.updateTask(task.id, task);
+  } catch (err) {
+    console.error('同步任务失败：', err);
+  }
+};
+
+// 跳转到新目标页面
+const navigateToNewPlan = () => {
+  router.push('/pages/study_plan/newplan');
+};
 </script>
 
 <style scoped>
-.goal-setting-page {
-  padding: 10px;
-  background-color: #f5f5f5;
-  min-height: 100vh;
+/* 任务列表区域 */
+.task-list {
+  padding: 16px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.basic-info-card {
-  background: #fff;
-  border-radius: 8px;
+/* 任务卡片 */
+.task-card {
+  background-color: var(--bg-card);
+  border-radius: 12px;
+  box-shadow: var(--shadow-light);
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+.task-card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
-.cycle-text, .duration-text {
-  margin-left: 10px;
-  color: #333;
-}
-
-.task-section {
-  margin-top: 20px;
-}
-
-.section-title {
+/* 任务头部 */
+.task-header {
+  padding: 14px 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
-  padding-bottom: 5px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--border-color);
+  cursor: default; /* 取消整体点击指针样式 */
 }
 
-.section-subtitle {
+/* 任务名称+铅笔容器（保持两个空格距离） */
+.task-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* 等价于两个空格的距离 */
+}
+.task-title-text {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+/* 通用编辑按钮（铅笔） */
+.edit-btn {
+  background: transparent;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: color 0.2s ease;
+  padding: 2px;
+}
+.edit-btn:hover {
+  color: var(--active-color);
+}
+
+/* 展开/收起箭头 */
+.expand-arrow {
   font-size: 14px;
-  color: #666;
-  margin: 10px 0;
+  color: var(--text-tertiary);
+  transition: transform 0.2s ease;
+  cursor: pointer;
+  margin: 0 8px;
+}
+.expand-arrow.expanded {
+  transform: rotate(180deg);
+  color: var(--active-color);
 }
 
-.custom-task-list, .recommend-task-list {
-  margin-bottom: 15px;
+/* 通用删除按钮（叉号） */
+.delete-btn {
+  background: transparent;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: color 0.2s ease;
+  padding: 2px;
+}
+.delete-btn:hover {
+  color: #ff4d4f;
 }
 
-.generate-btn {
-  margin-top: 10px;
+/* 子任务区域 */
+.subtask-container {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.submit-btn-wrap {
-  margin-top: 20px;
+/* 子任务项 */
+.subtask-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background-color: var(--active-bg);
+  border-radius: 8px;
+}
+
+/* 子任务名称+铅笔 */
+.subtask-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* 两个空格距离 */
+}
+.subtask-text {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+/* 子任务编辑/删除按钮尺寸调整 */
+.subtask-edit-btn {
+  font-size: 14px;
+}
+.subtask-delete-btn {
+  font-size: 12px;
+}
+
+/* 添加子任务按钮 */
+.add-subtask-btn {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background-color: var(--active-bg);
+  border: 1px dashed var(--active-color);
+  border-radius: 8px;
+  color: var(--active-color);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.add-subtask-btn:hover {
+  background-color: var(--active-color);
+  color: white;
+}
+
+/* 空任务提示 */
+.empty-tip {
+  text-align: center;
+  padding: 40px 0;
+  color: var(--text-tertiary);
+  font-size: 14px;
+}
+
+/* 新设目标按钮 */
+.new-plan-btn {
+  position: fixed;
+  right: 20px;
+  bottom: 80px;
+  padding: 12px 24px;
+  background-color: var(--active-color);
+  color: white;
+  border: none;
+  border-radius: 24px;
+  font-size: 15px;
+  font-weight: 500;
+  box-shadow: 0 4px 12px rgba(76, 191, 153, 0.3);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+.new-plan-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(76, 191, 153, 0.4);
+}
+
+/* 适配网页端 */
+@media (min-width: 768px) {
+  .new-plan-btn {
+    right: calc(50% - 187px + 20px);
+  }
+}
+
+/* 弹窗表单样式（基于全局弹窗样式扩展） */
+.modal-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.modal-input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+  margin-bottom: 20px;
+  outline: none;
+}
+.modal-input:focus {
+  border-color: var(--active-color);
+  box-shadow: 0 0 0 2px rgba(76, 191, 153, 0.2);
+}
+
+.modal-btn-group {
+  display: flex;
+  gap: 12px;
+}
+
+.modal-btn {
+  flex: 1;
+  padding: 10px 0;
+  border-radius: 8px;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cancel-btn {
+  background-color: var(--bg-primary);
+  color: var(--text-secondary);
+}
+.cancel-btn:hover {
+  background-color: var(--border-color);
+}
+
+.confirm-btn {
+  background-color: var(--active-color);
+  color: white;
+}
+.confirm-btn:hover {
+  background-color: #3aa884;
+  box-shadow: 0 2px 8px rgba(76, 191, 153, 0.3);
 }
 </style>

@@ -11,7 +11,7 @@ const request = axios.create({
 
 //请求拦截器
 request.interceptors.response.use(
-    (config) => {
+    (response) => {
         const res = response.data;
         if(res.code !== 200){
             return Promise.reject(new Error(res.message || 'Error'));

@@ -17,6 +17,8 @@
           class="form-input"
           placeholder="请输入当前密码"
         />
+      <span class="error-tip" v-if="showPwdError">旧密码输入错误</span>
+      <span class="error-tip" v-if="showNullOldPwd">请输入旧密码</span>
       </div>
       <div class="form-item">
         <label class="form-label">新密码</label>
@@ -27,6 +29,12 @@
           placeholder="请输入6-16位新密码"
           maxlength="16"
         />
+        <span class="error-tip" v-if="showNewPwdLenError">
+          新密码需为6-16位字符
+        </span>
+        <span class="error-tip" v-if="showPwdSameError">
+          新密码不能与旧密码相同
+        </span>
       </div>
       <div class="form-item">
         <label class="form-label">确认新密码</label>
@@ -37,6 +45,7 @@
           placeholder="请再次输入新密码"
           maxlength="16"
         />
+        <span class="error-tip" v-if="showPwdNotMatchError">新密码与确认密码不一致</span>
       </div>
       <button class="submit-btn" @click="handleChangePwd">确认修改</button>
     </div>
@@ -95,6 +104,8 @@ import { ref, reactive, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElSwitch } from 'element-plus'
 import { House, Flag, Star, Timer, User } from '@element-plus/icons-vue'
+import { getPassword, updatePassword } from './profile.js'
+
 
 const router = useRouter()
 const route = useRoute()
@@ -104,13 +115,6 @@ const NOTIFICATION_STORAGE_KEY = 'study_app_notification_settings'
 const THEME_STORAGE_KEY = 'study_app_dark_mode'
 const PWD_STORAGE_KEY = 'study_app_user_pwd' // 模拟密码存储（实际项目需后端交互）
 
-// 1. 修改密码相关
-const oldPassword = ref('')
-const newPassword = ref('')
-const confirmPassword = ref('')
-
-// 模拟初始密码（实际项目从后端获取）
-const initPwd = localStorage.getItem(PWD_STORAGE_KEY) || '123456'
 
 // 2. 消息通知设置（持久化）
 const initNotificationSettings = () => {
@@ -136,23 +140,6 @@ const initNotificationSettings = () => {
 }
 const notificationSettings = reactive(initNotificationSettings())
 
-// 3. 主题模式切换（持久化）
-const isDarkMode = ref(false)
-const initThemeMode = () => {
-  try {
-    let mode = false
-    if (typeof wx !== 'undefined' && wx.getStorageSync) {
-      mode = wx.getStorageSync(THEME_STORAGE_KEY)
-    } else {
-      mode = localStorage.getItem(THEME_STORAGE_KEY) === 'true'
-    }
-    isDarkMode.value = mode
-    // 应用主题
-    applyTheme(mode)
-  } catch (e) {
-    console.error('读取主题设置失败:', e)
-  }
-}
 
 // 4. 底部Tab
 const tabList = ref([
@@ -164,86 +151,112 @@ const tabList = ref([
 ])
 const activeTab = ref('个人')
 
-// 初始化
-onMounted(() => {
-  // 初始化主题
-  initThemeMode()
-  // 匹配当前Tab
-  const currentPath = route.path
-  const matchedTab = tabList.value.find(item => item.path === currentPath)
-  if (matchedTab) {
-    activeTab.value = matchedTab.name
-  }
-})
 
-// 监听主题变化
-watch(isDarkMode, (newVal) => {
-  applyTheme(newVal)
-  // 保存到本地
-  try {
-    if (typeof wx !== 'undefined' && wx.setStorageSync) {
-      wx.setStorageSync(THEME_STORAGE_KEY, newVal)
-    } else {
-      localStorage.setItem(THEME_STORAGE_KEY, newVal)
-    }
-  } catch (e) {
-    console.error('保存主题设置失败:', e)
-  }
-})
 
-// 应用主题样式
-const applyTheme = (isDark) => {
-  const html = document.documentElement
-  if (isDark) {
-    html.classList.add('dark-mode')
-  } else {
-    html.classList.remove('dark-mode')
-  }
-}
+
+
 
 // 返回上一页
 const handleBack = () => {
   router.go(-1)
 }
 
+// 1. 修改密码相关
+const oldPassword = ref('')
+const newPassword = ref('')
+const confirmPassword = ref('')
+const showNullOldPwd = ref(false); // 旧密码为空提示状态
+const showPwdError = ref(false); // 旧密码错误提示状态
+const showNewPwdLenError = ref(false); // 新密码长度错误提示状态
+const showPwdNotMatchError = ref(false); // 新密码与确认密码不一致提示
+const showPwdSameError = ref(false); // 新密码与旧密码相同提示状态
+let initPwd = '';
+
+
+const account = ref('');
+
+// 模拟初始密码
+const init = async (account) => {
+  if (!account) { // 先校验账号是否为空
+    alert('请先输入账号');
+    return '';
+  }
+  try {
+    const res = await getPassword(account);
+    initPwd = res.data.password; 
+    console.log('从接口获取的初始密码：', initPwd);
+    return initPwd;
+  } catch (error) {
+    console.error('获取初始密码失败：', error);
+    alert('获取账号信息失败，请重试');
+    return '';
+  }
+};
+
+onMounted(async () => {
+  
+  if (typeof wx !== 'undefined' && wx.getStorageSync) {
+    account.value = wx.getStorageSync('user_account') || '';
+  } else {
+    account.value = localStorage.getItem('user_account') || '';
+  }
+  
+  // 调用init获取初始密码
+  await init(account.value);
+});
+
 // 修改密码提交
-const handleChangePwd = () => {
+const handleChangePwd =async () => {
+  showPwdError.value = false; 
+  showNewPwdLenError.value = false;
+  showPwdNotMatchError.value = false;
+  showPwdSameError.value = false;
+  showNullOldPwd.value = false;
   // 校验
   if (!oldPassword.value) {
-    alert('请输入旧密码')
+    showNullOldPwd.value = true; 
+     document.querySelector('.form-input')?.focus();
     return
   }
-  if (oldPassword.value !== initPwd) {
-    alert('旧密码输入错误')
-    return
+   console.log('旧密码错误，输入的旧密码：', typeof(oldPassword.value), '正确密码：', typeof(initPwd));
+  
+   if (oldPassword.value !== initPwd) {
+    showPwdError.value = true; 
+    document.querySelector('.form-input')?.focus();
+   
+    return;
   }
   if (!newPassword.value || newPassword.value.length < 6 || newPassword.value.length > 16) {
-    alert('请输入6-16位新密码')
+    showNewPwdLenError.value = true;
+    document.querySelector('.form-input')?.focus();
     return
   }
   if (newPassword.value !== confirmPassword.value) {
-    alert('两次输入的新密码不一致')
+    showPwdNotMatchError.value = true;
+    document.querySelector('.form-input')?.focus(); 
     return
   }
   if (oldPassword.value === newPassword.value) {
-    alert('新密码不能与旧密码相同')
+    showPwdSameError.value = true;
+    document.querySelector('.form-input')?.focus();
     return
   }
+  
 
-  // 模拟保存密码（实际项目调用后端接口）
+  // 模拟保存密码
   try {
-    if (typeof wx !== 'undefined' && wx.setStorageSync) {
-      wx.setStorageSync(PWD_STORAGE_KEY, newPassword.value)
+   
+   form.password = newPassword.value; // 更新登录表单的密码字段
+   await updatePassword(form);
+    alert('密码修改成功，请重新登录')
+    // 清空本地存储的密码（模拟登出）
+    if (typeof wx !== 'undefined' && wx.removeStorageSync) {
+      wx.removeStorageSync(PWD_STORAGE_KEY)
     } else {
-      localStorage.setItem(PWD_STORAGE_KEY, newPassword.value)
+      localStorage.removeItem(PWD_STORAGE_KEY)
     }
-    alert('密码修改成功！请重新登录')
-    // 清空输入框
-    oldPassword.value = ''
-    newPassword.value = ''
-    confirmPassword.value = ''
-    // 可跳转到登录页
-    // router.push('/login')
+    // 跳转登录页
+    router.push('/login')
   } catch (e) {
     console.error('保存密码失败:', e)
     alert('密码修改失败，请重试')
