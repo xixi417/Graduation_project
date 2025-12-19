@@ -153,7 +153,7 @@ const handleLogin = async () => {
     })
 
     if(response.success){
-      alert('登录成功！')
+      // alert('登录成功！')
       if (typeof wx !== 'undefined' && wx.setStorageSync) {
         // 小程序环境
         wx.setStorageSync('user_account', form.value.account);

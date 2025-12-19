@@ -1,4 +1,16 @@
 // study_plan.js
+
+
+
+
+
+// export const getTaskList = () => {
+//   return request ({
+//     url: '/api/get-task-list',
+//     method: 'get'
+// })
+// }
+
 export const getTaskList = () => {
   // return fetch('/api/tasks').then(res => res.json());
   return new Promise((resolve) => {
@@ -42,13 +54,29 @@ export const getTaskList = () => {
   });
 };
 // export const deleteTask = (taskId) => {
-//   // return fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
-// };
+//   return request ({
+//     url: `/api/delete-task/${taskId}`,
+//     method: 'delete'
+// })
+// }
+// export const deleteSubTask = (taskId, subTaskId) => {
+//   return request ({
+//     url: `/api/delete-subtask/${taskId}/subtask/${subTaskId}`,
+//     method: 'delete'
+// })
+// }
 // export const updateTask = (taskId, taskData) => {
-//   return fetch(`/api/tasks/${taskId}`, {
-//     method: 'POST', // 或PUT
-//     body: JSON.stringify(taskData),
-//     headers: { 'Content-Type': 'application/json' }
+//   return request ({
+//     url: `/api/update-task/${taskId}`,
+//     method: 'put',
+//     data: taskData
+// })
+// }
+// export const updateSubTask = (taskId, subTaskId, subTaskData) => {
+//   return request({
+//     url: `/api/update-subtask/${taskId}/subtask/${subTaskId}`, // 路径拼接主/子任务ID
+//     method: 'PUT',
+//     data: subTaskData, 
 //   });
 // };
 
@@ -65,14 +93,37 @@ export const deleteTask = (taskId) => {
     }, 800);
   });
 };
+export const deleteSubTask = (taskId, subTaskId) => {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve({
+        code: 200,
+        msg: `删除子任务${subTaskId}成功`,
+        data: true
+      });
+    }, 800);
+  });
+};
 
-export const updateTask = (taskId, taskData) => {
+export const updateTask = (taskId,taskData) => {
   return new Promise((resolve) => {
     setTimeout(() => {
       resolve({
         code: 200,
         msg: `更新任务${taskId}成功`,
         data: taskData
+      });
+    }, 800);
+  });
+};
+
+export const updateSubTask = (taskId, subTaskId, subtaskData) => {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve({
+        code: 200,
+        msg: `更新任务${taskId}成功`,
+        data: subtaskData
       });
     }, 800);
   });

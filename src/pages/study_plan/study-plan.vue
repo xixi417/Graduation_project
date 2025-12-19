@@ -61,7 +61,7 @@
 
       <!-- 空任务提示 -->
       <div class="empty-tip" v-if="taskList.length === 0">
-        暂无任务，点击下方“新设目标”创建吧~
+        暂无任务，点击下方"新设目标"创建吧~
       </div>
     </div>
 
@@ -123,10 +123,12 @@ const taskList = ref([]);
 
 // 弹窗相关状态
 const modalVisible = ref(false); // 弹窗显示状态
-const modalType = ref(''); // 弹窗类型：task/subtask/addSubtask
+const modalType = ref(''); // 弹窗类型：task/subtask/addSubtask/confirm
 const modalTargetIndex = ref({ task: 0, subtask: 0 }); // 目标索引
 const modalTitle = ref(''); // 弹窗标题
 const modalFormValue = ref(''); // 表单输入值
+const pendingConfirm = ref({ callback: null }); // 待确认的回调
+const oldSubContent = ref(''); // 用于缓存子任务旧值
 
 // 底部Tab列表
 const tabList = ref([
@@ -148,13 +150,11 @@ const handleTabClick = (item) => {
   router.push(item.path)
 }
 
-
 // 从数据库获取任务列表
 const fetchTaskList = async () => {
   try {
     const res = await studyPlanApi.getTaskList(); 
     taskList.value = res.data || [];
-    // 初始化每个任务的展开状态
     taskList.value.forEach(task => {
       task.isExpanded = false;
     });
@@ -182,66 +182,136 @@ const openEditModal = (type, taskIndex, subtaskIndex = 0) => {
       break;
     case 'subtask':
       modalTitle.value = '编辑子任务内容';
-      modalFormValue.value = taskList.value[taskIndex].subtasks[subtaskIndex].content;
+      const subtasks = taskList.value[taskIndex].subtasks || [];
+      if (subtaskIndex < 0 || subtaskIndex >= subtasks.length) {
+        openConfirmModal('错误', '子任务不存在', () => {});
+        return;
+      }
+      modalFormValue.value = subtasks[subtaskIndex].content;
+      // 缓存旧值
+      oldSubContent.value = subtasks[subtaskIndex].content;
       break;
     case 'addSubtask':
       modalTitle.value = '添加子任务';
       modalFormValue.value = '';
       break;
+    case 'confirm':
+      // confirm弹窗已经处理
+      break;
   }
 
+  if (modalType.value !== 'confirm') {
+    modalVisible.value = true;
+    // 自动聚焦输入框（需等DOM渲染完成）
+    setTimeout(() => {
+      document.querySelector('.modal-input')?.focus();
+    }, 100);
+  }
+};
+
+// 打开确认弹窗（替代alert和confirm）
+const openConfirmModal = (title, message, callback) => {
+  modalType.value = 'confirm';
+  modalTitle.value = title;
+  modalFormValue.value = message;
+  pendingConfirm.value.callback = callback;
   modalVisible.value = true;
-  // 自动聚焦输入框（需等DOM渲染完成）
-  setTimeout(() => {
-    document.querySelector('.modal-input')?.focus();
-  }, 100);
 };
 
 // 关闭弹窗
 const closeModal = () => {
   modalVisible.value = false;
   modalFormValue.value = '';
+  pendingConfirm.value.callback = null;
+  oldSubContent.value = '';
 };
 
 // 提交表单
 const submitModalForm = async () => {
   const value = modalFormValue.value.trim();
+  
+  // 如果是确认弹窗
+  if (modalType.value === 'confirm') {
+    if (pendingConfirm.value.callback) {
+      await pendingConfirm.value.callback();
+    }
+    closeModal();
+    return;
+  }
+
+  // 原编辑/添加表单逻辑
   if (!value) {
-    // 可替换为轻提示（如Toast）
-    alert('内容不能为空');
+    // 替换alert：内容不能为空
+    openConfirmModal('提示', '内容不能为空', () => {});
     return;
   }
 
   const { task: taskIdx, subtask: subtaskIdx } = modalTargetIndex.value;
-  let updateTask = null;
-
+  const currentMainTask = taskList.value[taskIdx];
+  
   // 根据类型处理表单提交
   switch (modalType.value) {
     case 'task':
-      taskList.value[taskIdx].title = value;
-      updateTask = taskList.value[taskIdx];
+      // 缓存旧值
+      const oldTitle = currentMainTask.title;
+      // 更新前端数据
+      currentMainTask.title = value;
+      
+      // 同步到服务端
+      try {
+        await studyPlanApi.updateTask(currentMainTask.id, currentMainTask);
+      } catch (err) {
+        // 失败回滚
+        currentMainTask.title = oldTitle;
+        openConfirmModal('错误', '任务名称修改失败：' + (err.msg || '服务器异常'), () => {});
+        console.error('同步数据失败：', err);
+        return;
+      }
       break;
+      
     case 'subtask':
-      taskList.value[taskIdx].subtasks[subtaskIdx].content = value;
-      updateTask = taskList.value[taskIdx];
+      // 更新前端数据
+      currentMainTask.subtasks[subtaskIdx].content = value;
+      
+      try {
+        // 调用子任务更新接口
+        await studyPlanApi.updateSubTask(
+          currentMainTask.id, 
+          currentMainTask.subtasks[subtaskIdx].id, 
+          currentMainTask.subtasks[subtaskIdx]
+        );
+      } catch (err) {
+        // 失败回滚
+        currentMainTask.subtasks[subtaskIdx].content = oldSubContent.value;
+        openConfirmModal('错误', '子任务同步失败：' + (err.msg || '服务器异常'), () => {});
+        console.error('同步数据失败：', err);
+        return;
+      }
       break;
+      
     case 'addSubtask':
       const newSubtask = {
         id: Date.now(),
         content: value
       };
-      taskList.value[taskIdx].subtasks.push(newSubtask);
-      updateTask = taskList.value[taskIdx];
+      // 更新前端数据
+      currentMainTask.subtasks.push(newSubtask);
+      
+      try {
+        // 调用子任务更新接口
+        await studyPlanApi.updateSubTask(
+          currentMainTask.id, 
+          newSubtask.id, 
+          newSubtask
+        );
+      } catch (err) {
+        // 失败回滚
+        currentMainTask.subtasks.pop();
+        openConfirmModal('错误', '子任务添加失败：' + (err.msg || '服务器异常'), () => {});
+        console.error('同步数据失败：', err);
+        return;
+      }
       break;
-  }
-
-  // 同步到服务端
-  if (updateTask) {
-    try {
-      await studyPlanApi.updateTask(updateTask.id, updateTask);
-    } catch (err) {
-      console.error('同步数据失败：', err);
-    }
   }
 
   // 关闭弹窗
@@ -250,31 +320,32 @@ const submitModalForm = async () => {
 
 // 删除主任务
 const handleDeleteTask = async (taskId, taskIndex) => {
-  if (confirm('确定删除该任务吗？')) { // 可替换为弹窗确认
+  openConfirmModal('确认删除', '确定删除该任务吗？', async () => {
     try {
       await studyPlanApi.deleteTask(taskId);
       taskList.value.splice(taskIndex, 1);
     } catch (err) {
       console.error('删除任务失败：', err);
     }
-  }
+  });
 };
 
 // 删除子任务
 const handleDeleteSubtask = (taskIndex, subtaskIndex) => {
-  if (confirm('确定删除该子任务吗？')) { // 可替换为弹窗确认
-    taskList.value[taskIndex].subtasks.splice(subtaskIndex, 1);
-    updateTaskToServer(taskList.value[taskIndex]);
-  }
-};
-
-// 同步任务到服务端
-const updateTaskToServer = async (task) => {
-  try {
-    await studyPlanApi.updateTask(task.id, task);
-  } catch (err) {
-    console.error('同步任务失败：', err);
-  }
+  openConfirmModal('确认删除', '确定删除该子任务吗？', async () => {
+    const currentMainTask = taskList.value[taskIndex];
+    const targetSubtask = currentMainTask.subtasks[subtaskIndex];
+    
+    if (!targetSubtask) return;
+    
+    try {
+      await studyPlanApi.deleteSubTask(currentMainTask.id, targetSubtask.id);
+      currentMainTask.subtasks.splice(subtaskIndex, 1);
+    } catch (err) {
+      openConfirmModal('错误', '子任务删除失败：' + (err.msg || '服务器异常'), () => {});
+      console.error('删除子任务失败：', err);
+    }
+  });
 };
 
 // 跳转到新目标页面
@@ -282,6 +353,7 @@ const navigateToNewPlan = () => {
   router.push('/pages/study_plan/newplan');
 };
 </script>
+
 
 <style scoped>
 /* 任务列表区域 */
@@ -513,4 +585,5 @@ const navigateToNewPlan = () => {
   background-color: #3aa884;
   box-shadow: 0 2px 8px rgba(76, 191, 153, 0.3);
 }
+
 </style>
