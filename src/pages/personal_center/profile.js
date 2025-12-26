@@ -1,8 +1,10 @@
-// export const getPassword = (account) => {
+// export const getPassword = (username) => {
 //   return request ({
 //     url: '/api/get-password',
 //     method: 'get',
-//     params: { account }
+//     params: { username }
+
+import { el } from "element-plus/es/locales.mjs";
 
 //   });
 // }
@@ -13,28 +15,55 @@
 //     data, 
 //   });
 // };
-export const getPassword = (account) => {
+export const getPassword = (username) => {
+  if(username == "xixi")
     return new Promise((resolve) => {
         setTimeout(() => {
             resolve({
                 code: 200,
                 msg: '获取密码成功',
                 data: {
+                    username: "xixi",
                     password: "123456"
                 } // 模拟返回的密码
             });
         }, 800); // 模拟800ms的网络延迟   
-})
-}
+    })
+  else if(username == "admin")
+    return new Promise((resolve) => {
+        setTimeout(() => {
+            resolve({
+                code: 200,
+                msg: '获取密码成功',
+                data: {
+                    username: "admin",
+                    password: "admin123"
+                } // 模拟返回的密码
+            });
+        }, 800); // 模拟800ms的网络延迟   
+    })
+    else
+    return new Promise((resolve) => {
+        setTimeout(() => {
+            resolve({
+                code: 200,
+                msg: 'success',
+                data: {
+                    username: username,
+                    password: "000000"
+                } // 模拟返回的密码
+            });
+        }, 800); // 模拟800ms的网络延迟   
+    })
+  
+} 
 export const updatePassword = async (data) => {
-  try {
-    const response = await axios.post('/api/change-password', data, {
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
-    return response.data; // 返回后端返回的数据
-  } catch (error) {
-    throw new Error('后端返回错误'); // 抛出错误，被 try...catch 捕获
-  }
+  return new Promise((resolve) => {
+      setTimeout(() => {
+          resolve({
+              code: 200,
+              msg: '密码更新成功',
+          });
+      }, 800); // 模拟800ms的网络延迟   
+  });
 };

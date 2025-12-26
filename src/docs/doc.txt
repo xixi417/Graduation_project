@@ -10,9 +10,322 @@ ii在用户预设的学习时间点，通过APP推送或短信进行提醒，防
 
 1、走马灯图片来源，链接，从推荐中获取
 2、首页代办任务、学习提醒连接到计划中
-3、打卡页面，要能够每日提醒打卡
+
+      主动打卡/标记完成（核心，必须要有）
+
+      用户完成某个子任务或当日计划后，手动点击“完成”或“打卡”。
+
+      记录什么：完成的任务内容、完成日期。
+
+3、打卡页面，要能够每日提醒打卡(待定)
 4、数据库设计：1用户表
               2任务表
               3子任务表（区分增加修改删除任务和子任务功能）
               4推荐任务表
 5、管理员界面：login添加校验管理员账号，管理员额外有：添加各种图片链接给推荐表，页面显示
+
+推荐：主页面，上面有各种各样的资源
+     详细页面，点击资源，展开详细描述，有  一键添加到任务，（一键添加--->跳转到添加任务页面--->自动填写任务名称），
+                                        收藏，
+
+
+
+用户设定一个目标（如：学Python）。  
+2.  用户拆解/选择系统推荐拆解出子任务（如：安装环境、学完基础语法、完成小项目）。
+3.  用户为任务安排时间（分配到具体某天或设定周期）。  
+4.  学习时，使用你的【计时器】或学习后【手动打卡并输入时长】。  
+5.  系统基于这些打卡和时长数据，生成进度可视化、成就和报告，并在落后时提醒。  
+6.  用户根据报告和进度，调整后续计划（调整任务量或截止日期）。
+
+
+
+
+
+
+
+
+
+学习进度：每天/周/月的学习进度，为一个柱状图，横轴为每个小时/天，纵轴为学习时间
+
+A. 时间进度（Time Progress）
+逻辑：当前时间在总周期中的位置
+计算：(今天 - 开始日期) / (结束日期 - 开始日期)
+意义："时间已经过去了多少比例？"
+举例：20天计划，今天第5天 → 时间进度25%
+B. 任务进度（Task Progress）
+逻辑：已学时长占目标时长的比例
+计算：累计学习时间 / 计划总目标时间
+意义："任务完成了多少比例？"
+举例：目标100小时，已学30小时 → 任务进度30%
+C. 节奏进度（Pace Progress）
+逻辑：当前学习节奏 vs 所需节奏
+计算：日均已学时长 / 目标日均时长
+意义："当前学习速度是太快还是太慢？"
+举例：应该每天学5小时，实际每天学6小时 → 节奏进度120%（超速）
+
+=============================================================================
+表：
+----------------------------------------------------------------------------
+用户表User
+CREATE TABLE users (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    username VARCHAR(50) UNIQUE NOT NULL,      -- 用户名(account)
+    email VARCHAR(100) UNIQUE NOT NULL,        -- 邮箱
+    password_hash VARCHAR(255) NOT NULL,       -- 加密密码
+    avatar_url VARCHAR(500),                   -- 头像URL
+    bio TEXT,                                  -- 个人简介
+    daily_available_hours DECIMAL(3,1) DEFAULT 2.0, -- 每日可用学习时长
+    learning_preferences JSON,                 -- 学习偏好（JSON格式）
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    last_login_at TIMESTAMP NULL,              -- 最后登录时间
+    status ENUM('active', 'inactive', 'banned') DEFAULT 'active'
+);
+----------------------------------------------------------------------------
+学习计划表
+CREATE TABLE study_plans (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    plan_name VARCHAR(100) NOT NULL,           -- 计划名称
+    notes TEXT,                                -- 用户笔记
+    is_expanded                                -- 是否有子任务
+    
+    
+    -- 时间设定（弹性）
+    preferred_start_date DATE NOT NULL,        -- 期望开始日期
+    preferred_end_date DATE NOT NULL,          -- 期望完成日期
+    actual_start_date DATE,                    -- 实际开始日期（第一次学习时填充）
+    actual_end_date DATE,                      -- 实际完成日期
+    buffer_days INT DEFAULT 2,                 -- 缓冲天数
+    
+    -- 目标设定
+    target_minutes INT NOT NULL,               -- 总目标分钟数
+    target_hours DECIMAL(5,1) GENERATED ALWAYS AS (target_minutes / 60.0) STORED, -- 计算列
+    
+    -- 弹性设置
+    learning_days_per_week INT DEFAULT 5,      -- 每周计划学习几天
+    min_daily_minutes INT DEFAULT 30,          -- 每日最少分钟
+    max_daily_minutes INT DEFAULT 480,         -- 每日最多分钟（8小时）
+    
+    -- AI相关字段
+    ai_recommended_minutes INT,                -- AI推荐总时长
+    ai_recommended_daily_minutes INT,          -- AI推荐每日时长
+    ai_analysis_result JSON,                   -- AI分析结果（JSON存储）
+    
+    -- 状态管理
+    status ENUM('draft', 'active', 'paused', 'completed', 'abandoned') DEFAULT 'draft',
+    completion_rate DECIMAL(5,2) DEFAULT 0.00, -- 完成率（0-100）
+    
+    -- 提醒设置
+    daily_reminder_enabled BOOLEAN DEFAULT TRUE,
+    reminder_time TIME DEFAULT '19:00:00',     -- 提醒时间
+    reminder_days_before INT DEFAULT 1,        -- 提前几天提醒
+    
+    -- 时间戳
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    -- 外键
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    
+    -- 索引
+    INDEX idx_user_status (user_id, status),
+    INDEX idx_user_dates (user_id, preferred_start_date, preferred_end_date)
+);
+子任务表
+CREATE TABLE sub_tasks (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    plan_id INT NOT NULL,                      -- 所属主计划
+    parent_task_id INT NULL,                   -- 父任务ID（支持多级嵌套）
+    
+    title VARCHAR(200) NOT NULL,               -- 子任务标题
+    notes TEXT,                                -- 用户笔记
+    
+    -- 时间设定
+    preferred_start_date DATE,                 -- 期望开始日期
+    preferred_end_date DATE,                   -- 期望完成日期
+    actual_start_date DATE,                    -- 实际开始日期
+    actual_end_date DATE,                      -- 实际完成日期
+    
+    -- 目标设定
+    estimated_minutes INT NOT NULL,            -- 预估所需分钟数
+    actual_minutes INT DEFAULT 0,              -- 实际花费分钟数
+
+    -- AI相关字段
+    ai_recommended_minutes INT,                -- AI推荐总时长
+    ai_recommended_daily_minutes INT,          -- AI推荐每日时长
+    ai_analysis_result JSON,                   -- AI分析结果（JSON存储）
+    
+    -- 依赖关系
+    depends_on VARCHAR(500),                   -- 依赖的任务ID（逗号分隔）
+    blocking BOOLEAN DEFAULT FALSE,            -- 是否为阻塞性任务
+    
+    -- 状态管理
+    status ENUM(
+        'not_started',      -- 未开始
+        'in_progress',      -- 进行中
+        'completed',        -- 已完成
+        'blocked',          -- 被阻塞
+        'postponed'         -- 已延期
+    ) DEFAULT 'not_started',
+    
+    completion_percentage INT DEFAULT 0,       -- 完成百分比（0-100）
+    is_milestone BOOLEAN DEFAULT FALSE,        -- 是否为里程碑任务
+    
+    
+    -- 排序
+    display_order INT DEFAULT 0,               -- 显示顺序
+    
+    -- AI相关
+    ai_generated BOOLEAN DEFAULT FALSE,        -- 是否AI生成
+    ai_difficulty_rating INT,                  -- AI评估难度（1-5）
+    ai_prerequisites JSON,                     -- AI推荐的前置知识
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP NULL,               -- 完成时间
+    
+    FOREIGN KEY (plan_id) REFERENCES study_plans(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_task_id) REFERENCES sub_tasks(id) ON DELETE CASCADE,
+    
+    INDEX idx_plan_status (plan_id, status),
+    INDEX idx_plan_parent (plan_id, parent_task_id),
+    INDEX idx_plan_dates (plan_id, preferred_start_date, preferred_end_date),
+    INDEX idx_priority_deadline (priority, preferred_end_date)
+);
+-------------------------------------------------------------------------------------------------------
+学习会话表（记录）
+CREATE TABLE study_sessions (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    plan_id INT NULL,               -- 关联学习计划
+    sub_task_id INT NULL,           -- 关联子任务
+    
+    -- 会话状态
+    session_status ENUM('active', 'paused', 'completed', 'abandoned') DEFAULT 'active',
+    
+    -- 时间管理
+    start_time DATETIME NOT NULL,   -- 会话开始时间
+    last_activity_time DATETIME,    -- 最后活跃时间（用于心跳）
+    end_time DATETIME NULL,         -- 会话结束时间
+    
+    -- 时长计算
+    effective_minutes INT DEFAULT 0, -- 有效学习分钟数
+    total_duration_minutes INT,      -- 总持续时间（end-start）
+    
+    -- 质量控制
+    auto_completed BOOLEAN DEFAULT FALSE, -- 是否自动结束
+    
+   ,
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    INDEX idx_user_active (user_id, session_status, start_time),
+    INDEX idx_user_date (user_id, DATE(start_time)),
+    INDEX idx_heartbeat (last_activity_time, session_status)  -- 心跳检查索引
+);
+-------------------------------------------------------------------------------------------------------
+学习资源表：
+CREATE TABLE learning_materials (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,                      -- 创建者
+    
+    title VARCHAR(200) NOT NULL,               -- 资料标题
+    description TEXT,                          -- 描述
+    url VARCHAR(500),                          -- 资料链接/路径
+    imgurl VARCHAR(500)                        -- 资料图片
+   
+    -- 第一级：大类
+    category ENUM('basic', 'computer', 'language', 'exam', 'skill', 'hobby') NOT NULL,
+
+    -- 第二级：具体学科（存储 JSON 或字符串）
+    subject VARCHAR(100) NOT NULL,
+
+
+    -- 预估信息
+    estimated_minutes INT,                     -- 预估学习时间
+    page_views                                 -- 浏览量
+    difficulty ENUM('beginner', 'intermediate', 'advanced') DEFAULT 'beginner',
+    
+    
+    -- 排序
+    display_order INT DEFAULT 0,               -- 显示顺序
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (plan_id) REFERENCES study_plans(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    
+    INDEX idx_plan_user (plan_id, user_id),
+    INDEX idx_plan_completed (plan_id, is_completed)
+);
+
+-------------------------------------------------------------------------------------------------------
+AI分析结果记录表：
+CREATE TABLE ai_analysis_logs (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    plan_id INT,                               -- 可为空，通用分析时可能无计划
+    
+    analysis_type ENUM('plan_recommendation', 'progress_analysis', 'adjustment_suggestion', 'difficulty_assessment') NOT NULL,
+    
+    -- 请求信息
+    request_data JSON,                         -- 请求数据
+    prompt_text TEXT,                          -- 实际发送的提示词
+    ai_model VARCHAR(50) DEFAULT 'gpt-3.5-turbo', -- 使用的AI模型
+    
+    -- 响应信息
+    response_data JSON,                        -- AI原始响应
+    parsed_result JSON,                        -- 解析后的结果
+    used_tokens INT,                           -- 使用的token数
+    
+    -- 状态
+    status ENUM('pending', 'success', 'failed') DEFAULT 'pending',
+    error_message TEXT,                        -- 错误信息
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    processed_at TIMESTAMP NULL,               -- 处理完成时间
+    
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (plan_id) REFERENCES study_plans(id) ON DELETE SET NULL,
+    
+    INDEX idx_user_type (user_id, analysis_type),
+    INDEX idx_created_at (created_at)
+);
+-------------------------------------------------------------------------------------------------------
+通知提醒表：
+CREATE TABLE notifications (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    
+    notification_type ENUM(
+        'study_reminder',      -- 学习提醒
+        'progress_update',     -- 进度更新
+        'milestone_reached',   -- 里程碑达成
+        'ai_suggestion',       -- AI建议
+        'system_announcement'  -- 系统通知
+    ) NOT NULL,
+    
+    title VARCHAR(200) NOT NULL,               -- 通知标题
+    content TEXT NOT NULL,                     -- 通知内容
+    data JSON,                                 -- 附加数据
+    
+    -- 状态
+    is_read BOOLEAN DEFAULT FALSE,             -- 是否已读
+    is_delivered BOOLEAN DEFAULT FALSE,        -- 是否已发送
+    delivery_method ENUM('in_app', 'email', 'both') DEFAULT 'in_app',
+    
+    scheduled_at TIMESTAMP NULL,               -- 计划发送时间
+    sent_at TIMESTAMP NULL,                    -- 实际发送时间
+    read_at TIMESTAMP NULL,                    -- 阅读时间
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    
+    INDEX idx_user_unread (user_id, is_read),
+    INDEX idx_scheduled (scheduled_at, is_delivered),
+    INDEX idx_created (created_at)
+);

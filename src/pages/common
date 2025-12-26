@@ -1,0 +1,680 @@
+<template>
+  <div class="page-container">
+
+    <!-- 1. 顶部导航栏（点击切换对应二级分类） -->
+    <div class="top-nav">
+      <div class="nav-buttons">
+        <button
+          v-for="navItem in topNavList"
+          :key="navItem.label"
+          :class="['top-nav-btn', activeTopNav === navItem.label ? 'active' : '']"
+          @click="handleTopNavClick(navItem.label)"
+        >
+          {{ navItem.label }}
+        </button>
+
+         <!-- 新增：搜索功能区域 -->
+        <div class="search-wrap">
+          <div class="search-input-box">
+            <el-input
+              v-model="searchKeyword"
+              placeholder="请输入标题/简介/标签进行搜索"
+              prefix-icon="Search"
+              @input="handleSearch"
+              @clear="handleSearch"
+            ></el-input>
+          </div>
+        </div>
+      </div>
+
+     
+    </div>
+
+    <div class="scroll-container" >
+      <!-- 2. 二级分类区域（跟随顶部导航联动切换） -->
+      <div class="sub-category-wrap" v-if="currentSubCategory.length > 0">
+        <div class="sub-category-label">{{ activeTopNav }}：</div>
+        <div class="sub-category-list">
+          <button
+            v-for="subItem in currentSubCategory"
+            :key="subItem"
+            :class="['sub-category-btn', activeSubItem === subItem ? 'active' : '']"
+            @click="handleSubItemClick(subItem)"
+          >
+            {{ subItem }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 3. 原有筛选栏 -->
+      <div class="filter-bar">
+        <button
+          v-for="filter in filters"
+          :key="filter.id"
+          :class="['filter-btn', filter.active ? 'active' : '']"
+          @click="handleFilterChange(filter.id)"
+        >
+          {{ filter.name }}
+        </button>
+      </div>
+
+      <!-- 4. 推荐内容列表（根据分类+筛选+搜索结果展示） -->
+      <div class="recommendation-grid">
+        <div
+          class="content-card"
+          v-for="item in filteredContentList"
+          :key="item.id"
+          @click="handleContentClick(item.id)"
+        >
+          <div class="content-image">
+            <img :src="item.imageUrl" :alt="item.title" />
+            <span v-if="item.isNew" class="new-badge">新</span>
+          </div>
+          <div class="content-info">
+            <h3 class="content-title">{{ item.title }}</h3>
+            <p class="content-desc">{{ item.description }}</p>
+            <div class="content-meta">
+              <span class="meta-item">{{ item.category }}</span> <!-- 左下角标签 -->
+              <span class="meta-item">{{ item.viewCount }} 浏览</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 搜索无结果提示 -->
+        <div class="empty-tip" v-if="filteredContentList.length === 0">
+          未找到匹配“{{ searchKeyword }}”的内容，请更换关键词重试
+        </div>
+      </div>
+
+      <!-- 5. 加载更多按钮 -->
+      <div v-if="hasMore && filteredContentList.length > 0" class="load-more">
+        <button @click="loadMoreContent" class="modal-btn confirm-btn">
+          加载更多
+        </button>
+      </div>
+    </div>
+
+    <!-- 6. 底部常驻Tab栏 -->
+    <div class="tab-bar">
+      <div
+        class="tab-item"
+        v-for="item in tabList"
+        :key="item.name"
+        :class="{ active: activeTab === item.name }"
+        @click="handleTabClick(item)"
+      >
+        <component :is="item.icon" size="24" />
+        <div class="tab-name">{{ item.name }}</div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+// 引入Element Plus图标和输入框组件
+import { House, Flag, Star, Timer, User, Search } from '@element-plus/icons-vue'
+import { ElInput } from 'element-plus'
+
+// 路由实例
+const router = useRouter()
+
+// === 1. 顶部导航与二级分类配置（联动逻辑） ===
+const topNavList = ref([
+  { label: '基础学科' },
+  { label: '计算机' },
+  { label: '语言考试' },
+  { label: '职业认证' },
+  { label: '技能提升' },
+  { label: '智能推荐' }
+])
+
+// 顶部导航 -> 二级分类 映射表（一对一对应，不显示全部分类）
+const subCategoryMap = ref({
+  '基础学科': ['数学', '语文', '英语', '物理', '化学', '生物', '历史', '地理', '政治'],
+  '计算机': ['前端', '后端', '数据', '其他'],
+  '语言考试': ['四级', '六级', '考研英语', '雅思', '托福', '日语N1/N2'],
+  '职业认证': ['教师资格证', '会计初级', 'PMP', 'CPA', '法考'],
+  '技能提升': ['办公软件', '演讲表达', '写作技巧', '时间管理'],
+  '智能推荐': []
+})
+
+// 激活状态
+const activeTopNav = ref('基础学科')
+const activeSubItem = ref('')
+
+// 当前显示的二级分类（联动计算）
+const currentSubCategory = computed(() => {
+  const subList = subCategoryMap.value[activeTopNav.value] || []
+  if (subList.length > 0 && !activeSubItem.value) {
+    activeSubItem.value = subList[0]
+  }
+  return subList
+})
+
+// === 2. 搜索功能配置（支持标题/简介/标签搜索） ===
+const searchKeyword = ref('') // 搜索关键词
+
+// === 3. 原有功能数据 ===
+// 筛选条件
+const filters = ref([
+  { id: 'all', name: '全部', active: true },
+  { id: 'hot', name: '热门', active: false },
+  { id: 'new', name: '最新', active: false },
+  { id: 'followed', name: '已关注', active: false }
+])
+
+// 原始推荐内容数据
+const recommendedContent = ref([])
+const currentPage = ref(1)
+const pageSize = ref(12)
+const hasMore = ref(true)
+
+// 底部Tab相关
+const activeTab = ref('推荐')
+const tabList = ref([
+  { name: '首页', icon: House, path: '/Home' },
+  { name: '计划', icon: Flag, path: '/study_plan/study-plan' },
+  { name: '推荐', icon: Star, path: '/content_recommend/content-recommend' },
+  { name: '进度', icon: Timer, path: '/progress-record' },
+  { name: '个人', icon: User, path: '/personal_center/profile' }
+])
+
+// === 核心计算属性：筛选+搜索后的内容列表 ===
+const filteredContentList = computed(() => {
+  let list = [...recommendedContent.value]
+
+  // 第一步：根据筛选条件过滤（热门/最新等，模拟逻辑）
+  const activeFilter = filters.value.find(f => f.active)
+  if (activeFilter.id === 'hot') {
+    list = list.sort((a, b) => b.viewCount - a.viewCount) // 热门：按浏览量降序
+  } else if (activeFilter.id === 'new') {
+    list = list.sort((a, b) => b.id - a.id) // 最新：按ID降序（模拟时间排序）
+  } else if (activeFilter.id === 'followed') {
+    list = list.filter(item => item.viewCount > 5000) // 模拟已关注内容
+  }
+
+  // 第二步：多维度搜索过滤（标题/简介/标签（category））
+  if (searchKeyword.value.trim()) {
+    const keyword = searchKeyword.value.trim().toLowerCase()
+    list = list.filter(item => {
+      // 匹配标题、简介、左下角标签（category）
+      const matchTitle = item.title.toLowerCase().includes(keyword)
+      const matchDesc = item.description.toLowerCase().includes(keyword)
+      const matchTag = item.category.toLowerCase().includes(keyword)
+      return matchTitle || matchDesc || matchTag
+    })
+  }
+
+  return list
+})
+
+// === 方法定义 ===
+// 顶部导航点击事件
+const handleTopNavClick = (label) => {
+  activeTopNav.value = label
+  activeSubItem.value = ''
+  // 切换分类后刷新内容
+  refreshContentByCategory()
+}
+
+// 二级分类点击事件
+const handleSubItemClick = (item) => {
+  activeSubItem.value = item
+  refreshContentByCategory()
+}
+
+// 搜索事件（输入/清空时触发）
+const handleSearch = () => {
+  // 搜索时无需重置分页，仅过滤现有数据；若需远程搜索可在此添加API请求
+  console.log('搜索关键词：', searchKeyword.value)
+}
+
+// 筛选条件变更
+const handleFilterChange = (filterId) => {
+  filters.value = filters.value.map(filter => ({
+    ...filter,
+    active: filter.id === filterId
+  }))
+  // 重置并重新加载内容
+  currentPage.value = 1
+  recommendedContent.value = []
+  hasMore.value = true
+  loadRecommendedContent()
+}
+
+
+// 加载推荐内容
+const loadRecommendedContent = async () => {
+  // 模拟API请求，内容关联当前分类
+  const mockData = Array.from({ length: pageSize.value }, (_, i) => ({
+    id: (currentPage.value - 1) * pageSize.value + i + 1,
+    title: `${activeTopNav.value}-${activeSubItem.value || '通用'} 推荐内容 ${(currentPage.value - 1) * pageSize.value + i + 1}`,
+    description: `这是${activeTopNav.value}领域下，${activeSubItem.value || '通用'}方向的内容描述，涵盖该领域核心知识点和实操技巧...`,
+    imageUrl: `https://picsum.photos/seed/${activeTopNav.value}-${i}/300/200`,
+    category: activeTopNav.value, // 左下角标签（分类标签）
+    viewCount: Math.floor(Math.random() * 10000),
+    isNew: Math.random() > 0.7
+  }))
+
+  await new Promise(resolve => setTimeout(resolve, 800))
+
+  recommendedContent.value = [...recommendedContent.value, ...mockData]
+
+  if (currentPage.value >= 3) {
+    hasMore.value = false
+  }
+}
+
+// 加载更多内容
+const loadMoreContent = () => {
+  currentPage.value++
+  loadRecommendedContent()
+}
+
+// 内容点击事件
+const handleContentClick = (contentId) => {
+  router.push(`/content/${contentId}`)
+}
+
+// 底部Tab点击事件
+const handleTabClick = (item) => {
+  activeTab.value = item.name
+  router.push(item.path)
+}
+
+// 根据分类刷新内容
+const refreshContentByCategory = () => {
+  currentPage.value = 1
+  recommendedContent.value = []
+  hasMore.value = true
+  loadRecommendedContent()
+}
+
+// === 生命周期钩子 ===
+onMounted(() => {
+  loadRecommendedContent()
+})
+</script>
+
+<style scoped>
+/* 全局页面容器 */
+
+
+/* 顶部导航栏样式 */
+.top-nav {
+  display: flex;
+  align-items: center;
+  padding: 8px 0;
+  background-color: #fff;
+  border-bottom: 1px solid #e8e8e8;
+  min-height: 56px;
+  position: relative;
+  z-index: 99;
+  width: 100%;
+}
+
+.nav-buttons {
+  display: flex;
+  overflow-x: auto;
+  scrollbar-width: none;
+  white-space: nowrap;
+  flex: 2;
+  padding-left: 0 10px;
+  -webkit-overflow-scrolling: touch;
+  height: 56px;
+
+  align-items: center;
+  gap: 10px; /* 按钮间距 */
+
+  top: 0; /* 顶部固定，或 bottom: 0 底部固定 */
+  position: fixed;
+  left: 100px;
+  right: auto;
+  background-color: white; /* 背景色防止内容透出 */
+  z-index: 100;
+  width: 100%;
+
+}
+
+.nav-buttons::-webkit-scrollbar {
+  display: none;
+}
+
+.top-nav-btn {
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  font-size: 15px;
+  color: #333;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  position: relative;
+  margin-right: 8px;
+}
+
+.top-nav-btn.active {
+  color: #1890ff;
+  font-weight: 500;
+}
+
+.top-nav-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 24px;
+  height: 2px;
+  background-color: #1890ff;
+  border-radius: 1px;
+}
+
+/* 搜索功能样式 */
+.search-wrap {
+  padding: 6px 16px;
+  min-width: 280px;
+  max-width: 33.333%;
+  flex: auto;
+  box-sizing: border-box;
+}
+
+.search-input-box {
+  width: 100%;
+}
+
+:deep(.el-input) {
+  --el-input-height: 40px;
+}
+
+:deep(.el-input__inner) {
+  border-radius: 20px;
+  padding-left: 40px;
+  border: 1px solid #e8e8e8;
+}
+
+:deep(.el-input__prefix) {
+  left: 12px;
+  color: #999;
+}
+
+/* 滚动容器 */
+.scroll-container {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+   padding-top: 56px !important;
+  transform: none !important; 
+  will-change: auto !important; 
+}
+
+/* 2. 二级分类区域样式 */
+.sub-category-wrap {
+  padding: 12px 20px;
+  background-color: #fff;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.sub-category-label {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 8px;
+  display: inline-block;
+}
+
+.sub-category-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.sub-category-btn {
+  padding: 6px 14px;
+  background-color: #f5f7fa;
+  border: 1px solid #e8e8e8;
+  border-radius: 16px;
+  font-size: 14px;
+  color: #333;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sub-category-btn.active {
+  background-color: #e6f7ff;
+  color: #1890ff;
+  border-color: #91d5ff;
+}
+
+/* 3. 筛选栏样式 */
+.filter-bar {
+  display: flex;
+  gap: 12px;
+  padding: 16px 20px;
+  background-color: #fff;
+  margin: 0 0 10px 0;
+  border-radius: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.filter-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.filter-btn {
+  padding: 6px 16px;
+  background-color: #f5f7fa;
+  border: 1px solid #e8e8e8;
+  border-radius: 16px;
+  color: #666;
+  font-size: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+  outline: none;
+}
+
+.filter-btn.active {
+  background-color: #1890ff;
+  color: #fff;
+  border-color: #1890ff;
+}
+
+/* 4. 推荐内容网格布局 */
+.recommendation-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  padding: 0 20px;
+  min-height: 300px;
+}
+
+/* 内容卡片样式 */
+.content-card {
+  background-color: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  cursor: pointer;
+}
+
+.content-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.content-image {
+  position: relative;
+  width: 100%;
+  height: 160px;
+  overflow: hidden;
+}
+
+.content-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s ease;
+}
+
+.content-card:hover .content-image img {
+  transform: scale(1.05);
+}
+
+.new-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background-color: #ff4d4f;
+  color: white;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.content-info {
+  padding: 16px;
+}
+
+.content-title {
+  font-size: 16px;
+  color: #333;
+  margin-bottom: 8px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  height: 40px;
+  font-weight: 500;
+}
+
+.content-desc {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 12px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  height: 36px;
+  line-height: 1.5;
+}
+
+.content-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #999;
+}
+
+/* 空状态提示 */
+.empty-tip {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 60px 0;
+  color: #999;
+  font-size: 14px;
+}
+
+/* 5. 加载更多按钮 */
+.load-more {
+  text-align: center;
+  padding: 20px 0;
+  margin-bottom: 10px;
+}
+
+.modal-btn.confirm-btn {
+  padding: 10px 24px;
+  background-color: #1890ff;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.modal-btn.confirm-btn:hover {
+  background-color: #096dd9;
+}
+
+
+
+/* 响应式调整 */
+@media (max-width: 767px) {
+  .recommendation-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+  }
+  
+  .top-nav {
+    flex-wrap: nowrap;
+    flex-direction: column;
+    position: fixed;
+    bottom: auto;
+    left: 0;
+    z-index: 999;
+    right: 0;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05)
+  }
+  .nav-buttons {
+    height: 56px;
+    /* padding: 0 8px; */
+    gap: 8px; 
+    left: 0px;
+    width: 100%;
+    /* top: 0; 
+    
+    bottom: 0;
+    
+    right: 0;
+    
+    */
+    }
+  .scroll-container {
+  -webkit-overflow-scrolling: touch; 
+  overflow: auto;
+  }
+  
+  .search-wrap {
+    width: 100%;
+    padding: 6px 10px;
+    order: 1;
+  }
+  
+
+  .top-nav-btn {
+    font-size: 14px; 
+    padding: 6px 12px;
+    margin-right: 5px;
+  }
+
+  .top-nav-btn.active::after {
+    width: 20px; 
+  }
+
+  .content-image {
+    height: 100px;
+    z-index: 1 !important;
+  }
+
+  .content-info {
+    padding: 12px;
+  }
+
+  .content-title {
+    font-size: 14px;
+    height: 34px;
+  }
+
+  .content-desc {
+    display: none;
+  }
+}
+</style>

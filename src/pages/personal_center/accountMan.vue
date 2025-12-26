@@ -81,6 +81,27 @@
         />
       </div>
     </div>
+    <div>
+    <!-- 退出账号按钮 -->
+      <button class="exitAccount" @click="showExitModal()">退出账号</button>
+
+    <!-- 弹窗） -->
+      <div class="modal-mask" v-if="isModalVisible" @click="hideExitModal()">
+        <div class="modal-content" @click.stop>
+          <!-- 弹窗提示文本 -->
+          <p style="margin: 0 0 20px 0; font-size: 14px; color: var(--text-primary); text-align: center;">
+            确定要退出当前账号吗？
+          </p>
+
+          <!-- 按钮组（仅取消+确定，复用现有样式） -->
+          <div class="modal-btn-group">
+            <button class="modal-btn cancel-btn" @click="hideExitModal()">取消</button>
+            <button class="modal-btn confirm-btn" @click="handleConfirmExit()">确定</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    
 
 
     <!-- 底部Tab栏 -->
@@ -116,29 +137,7 @@ const THEME_STORAGE_KEY = 'study_app_dark_mode'
 const PWD_STORAGE_KEY = 'study_app_user_pwd' // 模拟密码存储（实际项目需后端交互）
 
 
-// 2. 消息通知设置（持久化）
-const initNotificationSettings = () => {
-  let settings = null
-  try {
-    // 兼容小程序/网页端
-    if (typeof wx !== 'undefined' && wx.getStorageSync) {
-      settings = wx.getStorageSync(NOTIFICATION_STORAGE_KEY)
-    } else {
-      settings = localStorage.getItem(NOTIFICATION_STORAGE_KEY)
-      settings = settings ? JSON.parse(settings) : null
-    }
-  } catch (e) {
-    console.error('读取通知设置失败:', e)
-  }
-  // 默认开启所有通知
-  return {
-    checkIn: true,
-    plan: true,
-    progress: true,
-    ...settings
-  }
-}
-const notificationSettings = reactive(initNotificationSettings())
+
 
 
 // 4. 底部Tab
@@ -173,19 +172,23 @@ const showPwdSameError = ref(false); // 新密码与旧密码相同提示状态
 let initPwd = '';
 
 
-const account = ref('');
+const username = ref('');
 
 // 模拟初始密码
-const init = async (account) => {
-  if (!account) { // 先校验账号是否为空
+const init = async (username) => {
+  if (!username) { // 先校验账号是否为空
     alert('请先输入账号');
+    router.push('../register/login')
     return '';
   }
+  console.log('正在获取账号信息，账号：', username);
   try {
-    const res = await getPassword(account);
-    initPwd = res.data.password; 
-    console.log('从接口获取的初始密码：', initPwd);
-    return initPwd;
+    const res = await getPassword(username);
+    if(res.code == 200){
+      initPwd = res.data.password; 
+      console.log('从接口获取的初始密码：', initPwd);
+      return initPwd;
+    }
   } catch (error) {
     console.error('获取初始密码失败：', error);
     alert('获取账号信息失败，请重试');
@@ -196,13 +199,24 @@ const init = async (account) => {
 onMounted(async () => {
   
   if (typeof wx !== 'undefined' && wx.getStorageSync) {
-    account.value = wx.getStorageSync('user_account') || '';
+    username.value = wx.getStorageSync('user_username') || '';
   } else {
-    account.value = localStorage.getItem('user_account') || '';
+    username.value = localStorage.getItem('user_username') || '';
   }
   
   // 调用init获取初始密码
-  await init(account.value);
+  await init(username.value);
+
+   const savedSettings = initNotificationSettings();
+  // 将保存的设置合并到响应式对象中
+  Object.assign(notificationSettings, savedSettings);
+
+  // 初始化后根据状态提示（修复：移到这里执行，确保使用的是已加载的设置）
+  if (notificationSettings.checkIn) {
+    ElMessage.success('打卡提醒已开启，将按时为你推送打卡通知');
+  } else {
+    ElMessage.info('打卡提醒已关闭，将不再接收打卡相关通知');
+  }
 });
 
 // 修改密码提交
@@ -241,7 +255,10 @@ const handleChangePwd =async () => {
     document.querySelector('.form-input')?.focus();
     return
   }
-  
+  const form = {
+    username: username.value,
+    password: ''
+  }
 
   // 模拟保存密码
   try {
@@ -256,11 +273,16 @@ const handleChangePwd =async () => {
       localStorage.removeItem(PWD_STORAGE_KEY)
     }
     // 跳转登录页
-    router.push('/login')
+    router.push('/register/login')
   } catch (e) {
     console.error('保存密码失败:', e)
     alert('密码修改失败，请重试')
   }
+ const savedSettings = initNotificationSettings()
+  // 将保存的设置应用到响应式对象
+  Object.assign(notificationSettings, savedSettings)
+
+
 }
 
 // 通知设置变更
@@ -278,17 +300,105 @@ const handleNotificationChange = () => {
   }
 }
 
-// 主题切换ss
-const handleThemeChange = () => {
-  // 由watch自动处理保存和应用
-  alert(`已切换为${isDarkMode.value ? '深色模式' : '浅色模式'}`)
-}
+
 
 // Tab点击跳转
 const handleTabClick = (item) => {
   activeTab.value = item.name
   router.push(item.path)
 }
+
+
+//消息设置
+//打卡提醒
+const notificationSettings = reactive({
+  checkIn: false, 
+  remindTime: '15:54' // 默认提醒时间（上午9点）
+});
+let remindTime = null;
+// 消息通知设置（持久化）
+const initNotificationSettings = () => {
+  let settings = null
+  try {
+    // 兼容小程序/网页端
+    if (typeof wx !== 'undefined' && wx.getStorageSync) {
+      settings = wx.getStorageSync(NOTIFICATION_STORAGE_KEY)
+    } else {
+      settings = localStorage.getItem(NOTIFICATION_STORAGE_KEY)
+      settings = settings ? JSON.parse(settings) : null
+    }
+
+    if (notificationSettings.checkIn) {
+    ElMessage.success('打卡提醒已开启，将按时为你推送打卡通知');
+    
+  } else {
+    ElMessage.info('打卡提醒已关闭，将不再接收打卡相关通知');
+    
+  }
+  } catch (e) {
+    console.error('读取通知设置失败:', e)
+  }
+
+
+
+
+
+
+
+
+
+
+
+
+  // 默认开启所有通知
+  return {
+    checkIn: true,
+    plan: true,
+    progress: true,
+    remindTime: '15:54',
+    ...settings
+  }
+}
+// 控制弹窗显示/隐藏
+const isModalVisible = ref(false);
+
+// 显示弹窗
+const showExitModal = () => {
+  isModalVisible.value = true;
+};
+
+// 隐藏弹窗
+const hideExitModal = () => {
+  isModalVisible.value = false;
+};
+
+
+const handleConfirmExit = () => {
+  localStorage.removeItem("token");
+  localStorage.removeItem("userInfo");
+  // 隐藏弹窗并跳转登录页
+  hideExitModal();
+  router.replace("/register/login");
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 </script>
 
 <style scoped>
@@ -302,7 +412,6 @@ const handleTabClick = (item) => {
   --text-secondary: #CCCCCC;
   --border-color: #383838;
 }
-
 
 
 /* 页面头部 */

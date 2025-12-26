@@ -18,7 +18,7 @@
             type="text" 
             class="input-field" 
             placeholder="账号名/邮箱/手机号"
-            v-model="form.account"
+            v-model="form.username"
             maxlength="50"
           >
 
@@ -34,7 +34,7 @@
           </div>
 
           <!-- 登录按钮 -->
-          <button class="login-btn" @click="handleLogin" :disabled="!form.account || !form.password || !form.agree">
+          <button class="login-btn" @click="handleLogin" :disabled="!form.username || !form.password || !form.agree">
             登录
           </button>
 
@@ -124,7 +124,7 @@ import CryptoJS from 'crypto-js';
 
 // 表单数据
 const form = ref({
-  account: '',
+  username: '',
   password: '',
   agree: false
 })
@@ -135,8 +135,8 @@ const loading = ref(false)
 const router = useRouter()
 
 const handleLogin = async () => {
-  if (!form.value.account || !form.value.password || !form.value.agree) {
-    if (!form.value.account) alert('请输入账号名/邮箱/手机号')
+  if (!form.value.username || !form.value.password || !form.value.agree) {
+    if (!form.value.username) alert('请输入账号名/邮箱/手机号')
     else if (!form.value.password) alert('请输入登录密码')
     else if (!form.value.agree) alert('请同意服务协议和隐私政策')
     return
@@ -147,7 +147,7 @@ const handleLogin = async () => {
   const hashedPassword = CryptoJS.SHA256(form.value.password).toString();
   try{
     const response = await login({
-      account: form.value.account,
+      username: form.value.username,
       password: form.value.password,
       timestamp: Date.now()
     })
@@ -156,10 +156,10 @@ const handleLogin = async () => {
       // alert('登录成功！')
       if (typeof wx !== 'undefined' && wx.setStorageSync) {
         // 小程序环境
-        wx.setStorageSync('user_account', form.value.account);
+        wx.setStorageSync('user_username', form.value.username);
       } else {
         // 浏览器环境
-        localStorage.setItem('user_account', form.value.account);
+        localStorage.setItem('user_username', form.value.username);
       }
       router.push('/Home')
     } else {

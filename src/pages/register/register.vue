@@ -21,7 +21,7 @@
           </div>
 
           <!-- 注册表单 -->
-          <input 
+          <!-- <input 
             type="text" 
             class="input-field" 
             placeholder="请输入用户名"
@@ -29,18 +29,37 @@
             maxlength="20"
             @focus="clearError('username')"
           >
-          <div v-if="errors.username" class="error-msg">{{ errors.username }}</div>
+          <div v-if="errors.username" class="error-msg">{{ errors.username }}</div> -->
 
+          <div class="input-group">
           <input 
             type="text" 
             class="input-field" 
-            placeholder="请输入邮箱/手机号"
-            v-model="form.account"
+            placeholder="请输入邮箱"
+            v-model="form.email"
             maxlength="50"
-            @focus="clearError('account')"
+            @focus="clearError('email')"
           >
-          <div v-if="errors.account" class="error-msg">{{ errors.account }}</div>
-
+          </div>
+          <div v-if="errors.email" class="error-msg">{{ errors.email }}</div>
+          <div class="input-group verification-group">
+            <div class="input-with-btn">
+            <input 
+              type="text"
+              class="input-field code-input" 
+              placeholder="请输入验证码（6位）"
+              v-model="form.verificationCode"
+              maxlength="6"
+              @focus="clearError('verificationCode')"
+            >
+          <button type="button" class="send-code-btn " :disabled="isCounting || !form.email.trim()" 
+          @click="sendVerificationCode">
+            {{ countdown > 0 ? `${countdown}s后重发` : '获取验证码' }}
+          </button>
+          </div>
+        </div>
+          <div v-if="errors.verificationCode" class="error-msg">{{ errors.verificationCode }}</div>
+         
           <div class="input-group">
             <input 
               :type="showPassword ? 'text' : 'password'"
@@ -73,7 +92,7 @@
           <button 
             class="register-btn" 
             @click="handleRegister" 
-            :disabled="!form.username || !form.account || !form.password || !form.confirmPassword || !form.agree || loading"
+            :disabled=" !form.email || !form.password || !form.confirmPassword || !form.agree || loading"
           >
             <span v-if="!loading">立即注册</span>
             <span v-else class="loading-text">注册中...</span>
@@ -164,17 +183,20 @@ import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { register } from './register.js'
 import CryptoJS from 'crypto-js'
+import { computed } from 'vue';
 
 const router = useRouter()
 
 // 表单数据
 const form = reactive({
-  username: '',
-  account: '',
+ 
+  email: '',
   password: '',
   confirmPassword: '',
+  verificationCode: '',
   agree: false
 })
+const actualVerificationCode = ref('')
 
 // 错误信息
 const errors = reactive({})
@@ -194,26 +216,29 @@ const clearError = (field) => {
 const validateForm = () => {
   const newErrors = {}
   
-  // 用户名验证
-  if (!form.username.trim()) {
-    newErrors.username = '用户名不能为空'
-  } else if (form.username.length < 2) {
-    newErrors.username = '用户名至少2个字符'
-  } else if (!/^[\u4e00-\u9fa5a-zA-Z0-9_]+$/.test(form.username)) {
-    newErrors.username = '用户名只能包含中文、英文、数字和下划线'
-  }
+  // // 用户名验证
+  // if (!form.username.trim()) {
+  //   newErrors.username = '用户名不能为空'
+  // } else if (form.username.length < 2) {
+  //   newErrors.username = '用户名至少2个字符'
+  // } else if (!/^[\u4e00-\u9fa5a-zA-Z0-9_]+$/.test(form.username)) {
+  //   newErrors.username = '用户名只能包含中文、英文、数字和下划线'
+  // }
 
-  // 账号验证（邮箱或手机号）
-  if (!form.account.trim()) {
-    newErrors.account = '账号不能为空'
+  //账号验证（邮箱）
+  const emailValue = form.email ? String(form.email).trim() : '';
+  if (!emailValue) {
+    newErrors.email = '账号不能为空';
   } else {
-    // 邮箱验证
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    // 手机号验证
-    const phoneRegex = /^1[3-9]\d{9}$/
     
-   
+    const emailPattern = /^[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?$/;
+    if (!emailPattern.test(emailValue)) {
+      newErrors.email = '请输入有效的邮箱地址（如：test@example.com）';
+    }
   }
+  
+
+
 
   // 密码验证
   if (!form.password) {
@@ -233,13 +258,73 @@ const validateForm = () => {
     newErrors.confirmPassword = '两次输入的密码不一致'
   }
 
+  if (!form.verificationCode.trim()) {
+    newErrors.verificationCode = '验证码不能为空'
+  } else if (form.verificationCode.length !== 6) {
+    newErrors.verificationCode = '验证码必须为6位'
+  } else if (!/^\d+$/.test(form.verificationCode)) {
+    newErrors.verificationCode = '验证码必须为数字'
+  } else if (actualVerificationCode.value && form.verificationCode !== actualVerificationCode.value) {
+    newErrors.verificationCode = '验证码不正确'
+  }
+
+
   return newErrors
 }
 
-// 注册处理 - 留好与 register.js 的交互接口
+
+// 发送验证码
+// const sendVerificationCode = async () => {
+//   if (!form.email.trim()) {
+//     errors.email = '请输入邮箱地址'
+//     return
+//   }
+  
+//   try {
+//     // 调用后端发送验证码接口
+//     const response = await sendCode({ email: form.email })
+    
+//     if (response.code === 200) {
+//       // 存储后端返回的验证码
+//       actualVerificationCode.value = response.data.code     
+//       // 开始倒计时
+//       startCountdown()
+//       ElMessage.success('验证码已发送到邮箱')
+//     } else {
+//       ElMessage.error(response.message || '发送验证码失败')
+//     }
+//   } catch (error) {
+//     ElMessage.error('发送验证码失败')
+//   }
+// }
+
+const sendVerificationCode = () => {
+  if (!form.email.trim()) {
+    errors.email = '请输入邮箱地址'
+    return
+  }
+  
+  // 生成随机验证码
+  actualVerificationCode.value = generateRandomCode()
+  console.log('生成的验证码：', actualVerificationCode.value)
+  
+  // 模拟发送验证码（实际应用中应调用后端接口发送邮件）
+  alert(`验证码已发送到邮箱：${form.email}\n验证码为：${actualVerificationCode.value}`)
+  
+  // 开始倒计时
+  startCountdown()
+}
+
+// 生成随机验证码
+const generateRandomCode = () => {
+  return Math.floor(100000 + Math.random() * 900000).toString()
+}
+
+// 注册处理 
 const handleRegister = async () => {
   // 1. 表单验证
   const validationErrors = validateForm()
+
   if (Object.keys(validationErrors).length > 0) {
     Object.assign(errors, validationErrors)
     return
@@ -247,10 +332,9 @@ const handleRegister = async () => {
 
   // 2. 准备注册数据
   const registerData = {
-    username: form.username.trim(),
-    account: form.account.trim(),
+    // username: form.username.trim(),
+    email: form.email.trim(),
     password: form.password,
-    // 可以添加额外字段，如注册时间
     registerTime: new Date().toISOString(),
   }
   
@@ -258,11 +342,12 @@ const handleRegister = async () => {
   
   // 3. 设置加载状态
   loading.value = true
+
+  
   
   try {
     // 4. 调用注册接口
     const response = await register(registerData);
-    
     // 5. 处理注册结果
     if (response.success) {
       // 注册成功
@@ -275,8 +360,15 @@ const handleRegister = async () => {
       }, 1500)
     } else {
       // 注册失败
-      console.error('注册失败：', response.message)
-      alert(`注册失败：${response.message}`)
+      if (response.code === 1001) {
+        errors.value.verificationCode = '验证码错误'
+        ElMessage.error('验证码错误，请重新输入')
+      } else if (response.code === 1002) {
+        errors.value.email = '该邮箱已注册'
+        ElMessage.error('该邮箱已被注册')
+      } else {
+        ElMessage.error(response.message || '注册失败')
+      }
     }
   } catch (error) {
     // 6. 错误处理
@@ -287,7 +379,18 @@ const handleRegister = async () => {
     loading.value = false
   }
 }
+const countdown = ref(0)
+const isCounting = computed(() => countdown.value > 0)
 
+const startCountdown = () => {
+  countdown.value = 60
+  const timer = setInterval(() => {
+    countdown.value--
+    if (countdown.value <= 0) {
+      clearInterval(timer)
+    }
+  }, 1000)
+}
 
   
 
@@ -355,6 +458,26 @@ html, body {
 }
 @media (max-width: 768px) {
   .left-section {
+  .send-code-btn {
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: 40px;
+  width: 110px;
+  background-color: #409eff; /* 蓝色 */
+  color: white;
+  border: none;
+  border-radius: 0 4px 4px 0;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-weight: 500;
+}
+  
+  .send-code-btn:disabled {
+    background-color: #c0c4cc;
+    cursor: not-allowed;
+  }
     display: none !important;
   }
 }
@@ -362,6 +485,76 @@ html, body {
   width: 80%;
   height: auto;
   object-fit: contain;
+}
+.verification-group {
+  margin-top: 16px;
+}
+.input-with-btn {
+  position: relative;
+  display: flex;
+  width: 100%;
+}
+.code-input {
+  flex: 1;
+  padding-right: 120px; /* 给按钮留出空间 */
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  height: 40px;
+  padding: 0 12px;
+  font-size: 14px;
+  transition: border-color 0.3s;
+}
+.code-input:focus {
+  outline: none;
+  border-color: #409eff;
+}
+.send-code-btn {
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: 40px;
+  width: 110px;
+  background-color: #409eff; /* 蓝色 */
+  color: white;
+  border: none;
+  border-radius: 0 4px 4px 0;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-weight: 500;
+}
+
+.send-code-btn:hover:not(:disabled) {
+  background-color: #66b1ff;
+}
+
+/* 禁用状态 */
+.send-code-btn:disabled {
+  background-color: #c0c4cc;
+  cursor: not-allowed;
+  color: #909399;
+}
+
+/* 点击效果 */
+.send-code-btn:active:not(:disabled) {
+  background-color: #3a8ee6;
+}
+
+/* 错误状态 */
+.input-with-btn .code-input.error {
+  border-color: #f56c6c;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .code-input {
+    padding-right: 100px;
+  }
+  
+  .send-code-btn {
+    width: 95px;
+    font-size: 13px;
+  }
 }
 
 /* 右侧注册区域：自适应 */
@@ -642,4 +835,6 @@ html, body {
     margin: 10px;
   }
 }
+
+
 </style>

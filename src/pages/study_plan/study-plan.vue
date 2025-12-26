@@ -5,14 +5,15 @@
       <!-- 任务项（循环渲染） -->
       <div 
         v-for="(task, taskIndex) in taskList" 
-        :key="task.id" 
-        class="task-card"
+        :key="task.id || taskIndex" 
+        class="task-item"
+        
       >
         <!-- 任务头部 -->
         <div class="task-header">
           <!-- 任务名称+铅笔编辑按钮 -->
           <div class="task-title-wrap">
-            <span class="task-title-text">{{ task.title }}</span>
+            <button class="task-title-text" @click="handleTaskClick(taskIndex)">{{ task.planName }}</button>
             <button class="edit-btn" @click.stop="openEditModal('task', taskIndex)">
               ✏️
             </button>
@@ -36,12 +37,13 @@
           <!-- 子任务列表 -->
           <div 
             v-for="(subtask, subtaskIndex) in task.subtasks" 
-            :key="subtask.id" 
+            :key="subtask.id || subtaskIndex" 
             class="subtask-item"
+           
           >
             <!-- 子任务名称+铅笔编辑按钮 -->
             <div class="subtask-title-wrap">
-              <span class="subtask-text">{{ subtask.content }}</span>
+              <button class="subtask-text"  @click="handleSubTaskClick(taskIndex,subtaskIndex)" >{{ subtask.planName }}</button>
               <button class="edit-btn subtask-edit-btn" @click.stop="openEditModal('subtask', taskIndex, subtaskIndex)">
                 ✏️
               </button>
@@ -112,11 +114,13 @@ import {
   House, Flag, Star, Timer, User
 } from '@element-plus/icons-vue'
 
+const username = ref('');
+
 // 路由实例
 const router = useRouter();
 
 // 激活的底部Tab
-const activeTab = ref('首页')
+const activeTab = ref('计划')
 
 // 任务列表（本地+数据库同步）
 const taskList = ref([]);
@@ -153,7 +157,7 @@ const handleTabClick = (item) => {
 // 从数据库获取任务列表
 const fetchTaskList = async () => {
   try {
-    const res = await studyPlanApi.getTaskList(); 
+    const res = await studyPlanApi.getTaskList(username); 
     taskList.value = res.data || [];
     taskList.value.forEach(task => {
       task.isExpanded = false;
@@ -161,11 +165,42 @@ const fetchTaskList = async () => {
   } catch (err) {
     console.error('获取任务失败：', err);
   }
+  
+};
+const handleTaskClick = (taskIndex) => {
+  const task = taskList.value[taskIndex];
+  setStorage('currentTask', task);
+  setStorage('currentSubtask', null);
+  router.push('./study-plan-details');
+};
+const handleSubTaskClick = (taskIndex, subtaskIndex) => {
+  const task = taskList.value[taskIndex];
+  const subtask = task.subtasks[subtaskIndex];
+  setStorage('currentTask', task);
+  
+  setStorage('currentSubtask', subtask);
+  console.log(task);
+  console.log(subtask);
+  router.push('./study-plan-details');
 };
 
 // 展开/收起子任务（仅箭头触发）
 const toggleSubtask = (taskIndex) => {
   taskList.value[taskIndex].isExpanded = !taskList.value[taskIndex].isExpanded;
+};
+//存储到本地
+const setStorage = (key, value) => {
+  try {
+    // 检测是否为微信小程序环境
+    if (typeof wx !== 'undefined' && wx.setStorageSync) {
+      wx.setStorageSync(key, value);
+    } else {
+      // 网页环境使用localStorage
+      localStorage.setItem(key, JSON.stringify(value));
+    }
+  } catch (e) {
+    console.error('存储失败:', e);
+  }
 };
 
 // 打开编辑/添加弹窗
@@ -187,9 +222,9 @@ const openEditModal = (type, taskIndex, subtaskIndex = 0) => {
         openConfirmModal('错误', '子任务不存在', () => {});
         return;
       }
-      modalFormValue.value = subtasks[subtaskIndex].content;
+      modalFormValue.value = subtasks[subtaskIndex].planName;
       // 缓存旧值
-      oldSubContent.value = subtasks[subtaskIndex].content;
+      oldSubContent.value = subtasks[subtaskIndex].planName;
       break;
     case 'addSubtask':
       modalTitle.value = '添加子任务';
@@ -208,6 +243,7 @@ const openEditModal = (type, taskIndex, subtaskIndex = 0) => {
     }, 100);
   }
 };
+
 
 // 打开确认弹窗（替代alert和confirm）
 const openConfirmModal = (title, message, callback) => {
@@ -271,7 +307,7 @@ const submitModalForm = async () => {
       
     case 'subtask':
       // 更新前端数据
-      currentMainTask.subtasks[subtaskIdx].content = value;
+      currentMainTask.subtasks[subtaskIdx].planName = value;
       
       try {
         // 调用子任务更新接口
@@ -282,17 +318,17 @@ const submitModalForm = async () => {
         );
       } catch (err) {
         // 失败回滚
-        currentMainTask.subtasks[subtaskIdx].content = oldSubContent.value;
+        currentMainTask.subtasks[subtaskIdx].planName = oldSubContent.value;
         openConfirmModal('错误', '子任务同步失败：' + (err.msg || '服务器异常'), () => {});
         console.error('同步数据失败：', err);
         return;
       }
-      break;
+      break; 
       
     case 'addSubtask':
       const newSubtask = {
         id: Date.now(),
-        content: value
+        planName: value
       };
       // 更新前端数据
       currentMainTask.subtasks.push(newSubtask);
@@ -371,10 +407,9 @@ const navigateToNewPlan = () => {
   box-shadow: var(--shadow-light);
   overflow: hidden;
   transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15)
 }
-.task-card:hover {
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-}
+
 
 /* 任务头部 */
 .task-header {
@@ -383,9 +418,13 @@ const navigateToNewPlan = () => {
   justify-content: space-between;
   align-items: center;
   border-bottom: 1px solid var(--border-color);
-  cursor: default; /* 取消整体点击指针样式 */
+  cursor: default; 
+  color : var(--text-primary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) ;
 }
-
+.task-title-text {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); 
+}
 /* 任务名称+铅笔容器（保持两个空格距离） */
 .task-title-wrap {
   display: flex;
@@ -554,36 +593,5 @@ const navigateToNewPlan = () => {
   box-shadow: 0 0 0 2px rgba(76, 191, 153, 0.2);
 }
 
-.modal-btn-group {
-  display: flex;
-  gap: 12px;
-}
-
-.modal-btn {
-  flex: 1;
-  padding: 10px 0;
-  border-radius: 8px;
-  border: none;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.cancel-btn {
-  background-color: var(--bg-primary);
-  color: var(--text-secondary);
-}
-.cancel-btn:hover {
-  background-color: var(--border-color);
-}
-
-.confirm-btn {
-  background-color: var(--active-color);
-  color: white;
-}
-.confirm-btn:hover {
-  background-color: #3aa884;
-  box-shadow: 0 2px 8px rgba(76, 191, 153, 0.3);
-}
 
 </style>

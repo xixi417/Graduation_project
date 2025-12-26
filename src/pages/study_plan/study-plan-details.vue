@@ -1,0 +1,1772 @@
+<template>
+  <div class="study-plan-details">
+    <!-- 顶部导航栏（保留原有内容） -->
+    <header class="plan-header">
+      <div class="header-left">
+        <button class="back-btn" @click="handleBack">← 返回</button>
+        <h1 class="plan-title">
+          {{ planName }}
+          <span class="status-tag running">{{ planStatus }}</span>
+        </h1>
+      </div>
+      <div class="header-right">
+        <span class="total-target">总目标：{{ totalTargetHours }} 小时</span>
+        <div class="plan-settings" ref="settingsRef">
+          <button class="settings-btn" @click.stop="showSettingsMenu = !showSettingsMenu">
+            ···
+          </button>
+          <div class="settings-dropdown" v-show="showSettingsMenu">
+            <div class="dropdown-item" @click="handleEditPlan">编辑计划</div>
+            <div class="dropdown-item" @click="handlePausePlan">
+              {{ planStatus === '进行中' ? '暂停计划' : '恢复计划' }}
+            </div>
+            <div class="dropdown-item" @click="handleGenerateReport">生成学习报告</div>
+            <div class="dropdown-item danger" @click="handleDeletePlan">删除计划</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- 上半部分：计划概览与核心控制 -->
+    <section class="plan-core">
+      <!-- 计时器：仅子任务显示（主任务subtaskObj为null，隐藏） -->
+      <div class="timer-wrapper" v-if="!taskObj && subtaskObj">
+        <div class="timer-container" @click="!isRunning && startTimer()">
+          <div class="timer-circle">
+            <div class="timer-display" v-if="!isRunning">
+              <span>▶️</span> {{ totalSeconds > 0 ? '继续学习' : '开始学习' }}
+            </div>
+            <div class="timer-display" v-else>
+              {{ formattedCurrentTime }}
+            </div>
+            <div class="timer-buttons" v-if="isRunning">
+              <button class="timer-btn pause-btn" @click.stop="pauseTimer()">
+                ⏸️ 暂停
+              </button>
+              <button class="timer-btn stop-btn" @click.stop="stopAndSaveTimer()">
+                ⏹️ 结束并保存
+              </button>
+            </div>
+          </div>
+        </div>
+        <button class="quick-note-btn" @click="showNoteModal = true">
+          📝 添加笔记
+        </button>
+      </div>
+
+      <!-- 学习数据摘要：区分主任务/子任务 -->
+      <div class="study-summary">
+        <!-- 子任务：显示本次学习、今日累计、剩余目标 -->
+        <template v-if="!taskObj && subtaskObj">
+          <div class="summary-item">
+            <p class="summary-label">本次学习</p>
+            <p class="summary-value">{{ formattedCurrentTime.replace(/^00:/, '') }}</p>
+          </div>
+          <div class="summary-item">
+            <p class="summary-label">今日累计</p>
+            <p class="summary-value">{{ formattedTodayAccumulatedTime }}</p>
+          </div>
+          <div class="summary-item">
+            <p class="summary-label">剩余目标</p>
+            <p class="summary-value">{{ formattedRemainingTime }}</p>
+          </div>
+        </template>
+
+        <!-- 主任务：隐藏自身统计，只显示子任务汇总（带美化样式） -->
+        <div class="main-task-summary-wrapper" v-if="taskObj && !subtaskObj">
+          <h3 class="main-summary-title">子任务汇总数据</h3>
+          <div class="main-summary-content">
+            <div class="summary-item main-summary-item">
+              <p class="summary-label">子任务今日累计</p>
+              <p class="summary-value">{{ formattedSubtasksToday }}</p>
+            </div>
+            <div class="summary-item main-summary-item">
+              <p class="summary-label">子任务剩余目标</p>
+              <p class="summary-value">{{ formattedSubtasksRemaining }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 下半部分：计划详情配置与管理（原有内容不变） -->
+    <section class="plan-details-tabs">
+      <div class="tabs-header">
+        <button 
+          class="tab-btn" 
+          :class="{ active: activeTab === 'time-arrange' }"
+          @click="activeTab = 'time-arrange'"
+          v-if="!taskObj && subtaskObj"
+        >
+          📅 时间安排
+        </button>
+        <button 
+          class="tab-btn" 
+          :class="{ active: activeTab === 'task-breakdown' }"
+          @click="activeTab = 'task-breakdown'"
+        >
+          🎯 任务分解
+        </button>
+        <button 
+          class="tab-btn" 
+          :class="{ active: activeTab === 'study-record' }"
+          @click="activeTab = 'study-record'"
+        >
+          📊 学习记录与分析
+        </button>
+      </div>
+
+      <div class="tabs-content">
+        <div class="tab-panel" v-if="activeTab === 'time-arrange' && !taskObj && subtaskObj">
+          <div class="arrange-module">
+            <h3 class="module-title">单次目标时长</h3>
+            <div class="duration-buttons">
+              <button 
+                class="duration-btn" 
+                :class="{ selected: singleTargetDuration === 25 }"
+                @click="singleTargetDuration = 25"
+              >
+                25min
+              </button>
+              <button 
+                class="duration-btn" 
+                :class="{ selected: singleTargetDuration === 45 }"
+                @click="singleTargetDuration = 45"
+              >
+                45min
+              </button>
+              <button 
+                class="duration-btn" 
+                :class="{ selected: singleTargetDuration === 60 }"
+                @click="singleTargetDuration = 60"
+              >
+                60min
+              </button>
+              <button 
+                class="duration-btn" 
+                :class="{ selected: singleTargetDuration === 90 }"
+                @click="singleTargetDuration = 90"
+              >
+                90min
+              </button>
+              <button class="duration-btn custom-btn" @click="showCustomDuration = true">
+                自定义
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-panel" v-if="activeTab === 'task-breakdown'">
+          <div class="task-list">
+            <div class="task-item" v-for="(task, index) in taskList" :key="index" v-if="taskList && taskList.length >0 ">
+              <input type="checkbox" v-model="task.completed" class="task-checkbox">
+              <span class="task-name">{{ task.name }}</span>
+              <span class="task-budget">(已学：{{ task.accumulatedHours || 0 }}小时)</span>
+            </div>
+            <div class="empty-record" v-else>
+              暂时没有子任务哦
+            </div> 
+          </div>
+          
+          <button class="add-task-btn" @click="addNewTask()" v-if="taskObj && !subtaskObj">+ 添加子任务</button>
+        </div>
+
+        <div class="tab-panel" v-if="activeTab === 'study-record'">
+          <div class="record-module">
+            <h3 class="module-title">今日学习记录</h3>
+            <div class="record-list" v-if="todayStudyRecords.length > 0">
+              <div class="record-item" v-for="(record, index) in todayStudyRecords" :key="index">
+                <span class="record-date">{{ record.createTime }}</span>
+                <span class="record-duration">{{ record.duration }}</span>
+                <span class="record-tasks">{{ record.completedTasks }}</span>
+              </div>
+            </div>
+            <div class="empty-record" v-else>
+              今日暂无学习记录，开始你的第一次学习吧！
+            </div>
+          </div>
+
+          <div class="record-module">
+            <h3 class="module-title">进度可视化</h3>
+            <div class="progress-container">
+              <div class="progress-bar">
+                <div 
+                  class="progress-fill" 
+                  :style="{ width: `${progressPercent}%`, backgroundColor: progressPercent >= 80 ? '#4caf50' : '#2196f3' }"
+                ></div>
+              </div>
+              <span class="progress-text" v-if="!taskObj && subtaskObj">
+                {{ progressPercent }}% ({{ totalAccumulatedHours }}/{{ totalTargetHours }} 小时)
+              </span>
+              <span class="progress-text" v-if="taskObj && !subtaskObj">
+                {{ subtasksProgressPercent }}% ({{ subtasksSummary.totalSubtasksTotal }}/{{ totalTargetHours }} 小时)
+              </span>
+            </div>
+
+            <div class="calendar-heatmap">
+              <div class="heatmap-header">学习热图（近30天）</div>
+              <div class="heatmap-days" v-if="totalStudyRecords.length > 0">
+                <div 
+                  class="heatmap-block" 
+                  v-for="i in 30" 
+                  :key="i"
+                  :style="{ backgroundColor: getHeatmapColor(i) }"
+                  @mouseover="showHeatmapTip = true; heatmapTipText = `2025-12-${i < 10 ? '0' + i : i}：${Math.floor(Math.random() * 2) + 0.5}小时`"
+                  @mouseout="showHeatmapTip = false"
+                ></div>
+              </div>
+              <div class="empty-heatmap" v-else>
+                暂无学习数据，热图未生成
+              </div>
+              <div class="heatmap-tip" v-show="showHeatmapTip">{{ heatmapTipText }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 各类弹窗（原有内容不变） -->
+    <div class="modal-mask" v-if="showNoteModal" @click="showNoteModal = false">
+      <div class="modal-content" @click.stop>
+        <h3 class="modal-title">添加学习笔记</h3>
+        <textarea 
+          class="note-input" 
+          v-model="currentNote"
+          placeholder="记录本次学习的想法、疑问或收获..."
+        ></textarea>
+        <div class="modal-buttons">
+          <button class="modal-btn cancel-btn" @click="showNoteModal = false">取消</button>
+          <button class="modal-btn confirm-btn" @click="saveNote()">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-mask" v-if="showCustomDuration" @click="showCustomDuration = false">
+      <div class="modal-content custom-modal" @click.stop>
+        <h3 class="modal-title">设置单次目标时长</h3>
+        <input 
+          type="number" 
+          class="duration-input" 
+          v-model="customDuration"
+          min="1"
+          max="180"
+          placeholder="请输入1-180分钟"
+        >
+        <div class="modal-buttons">
+          <button class="modal-btn cancel-btn" @click="showCustomDuration = false">取消</button>
+          <button class="modal-btn confirm-btn" @click="confirmCustomDuration()">确认</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-mask" v-if="showCompleteModal" @click="handleCloseCompleteModal()">
+      <div class="modal-content complete-modal" @click.stop :class="{ animate: showCompleteModal }">
+        <div class="complete-icon">🎉</div>
+        <h3 class="complete-title">恭喜完成今日学习！</h3>
+        <p class="complete-desc">已达到单次目标时长 {{ singleTargetDuration }} 分钟，继续保持哦！</p>
+        <button class="modal-btn confirm-btn" @click="handleCloseCompleteModal()">确认</button>
+      </div>
+    </div>
+
+    <div class="smart-tip" v-if="showSmartTip" :style="{ transform: showSmartTip ? 'translateY(0)' : 'translateY(-100%)' }">
+      {{ smartTipText }}
+      <button class="tip-close-btn" @click="showSmartTip = false">×</button>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { sendDayStu } from './study-plan.js';
+import { useRouter } from 'vue-router';
+
+const router = useRouter();
+
+// 获取计划名称和任务信息
+const getPlanName = () => {
+  try {
+    let planName = '';
+    let subtaskObj = null;
+    let taskObj = null;
+    
+    if (typeof wx !== 'undefined' && wx.getStorageSync) {
+      subtaskObj = wx.getStorageSync('currentSubtask');
+      taskObj = wx.getStorageSync('currentTask');
+      planName = subtaskObj?.planName || taskObj?.planName || '';
+    } else {
+      const subtaskStr = localStorage.getItem('currentSubtask');
+      const taskStr = localStorage.getItem('currentTask');
+      
+      if (subtaskStr) {
+        try {
+          subtaskObj = JSON.parse(subtaskStr);
+          if (subtaskObj?.planName) {
+            planName = subtaskObj.planName;
+          }
+        } catch (parseError) {
+          console.error('解析 subtask JSON 失败:', parseError);
+        }
+      }
+      
+      if (!planName && taskStr) {
+        try {
+          taskObj = JSON.parse(taskStr);
+          if (taskObj?.planName) {
+            planName = taskObj.planName;
+          }
+        } catch (parseError) {
+          console.error('解析 task JSON 失败:', parseError);
+        }
+      }
+    }
+    
+    return { planName, subtaskObj, taskObj };
+  } catch (e) {
+    console.error('获取 planName 失败:', e);
+    return { planName: '', subtaskObj: null, taskObj: null };
+  }
+};
+
+const { planName: planNameRef, subtaskObj, taskObj } = getPlanName();
+const planName = ref(planNameRef);
+
+// 存储工具类
+const StorageUtil = {
+  isMiniProgram: () => {
+    return typeof wx !== 'undefined' && typeof wx.setStorageSync !== 'undefined';
+  },
+
+  set(key, value) {
+    if (this.isMiniProgram()) {
+      wx.setStorageSync(key, JSON.stringify(value));
+    } else {
+      localStorage.setItem(key, JSON.stringify(value));
+    }
+  },
+
+  get(key, defaultValue = null) {
+    try {
+      let data;
+      if (this.isMiniProgram()) {
+        data = wx.getStorageSync(key);
+      } else {
+        data = localStorage.getItem(key);
+      }
+      return data ? JSON.parse(data) : defaultValue;
+    } catch (e) {
+      console.error('获取存储数据失败：', e);
+      return defaultValue;
+    }
+  },
+
+  remove(key) {
+    if (this.isMiniProgram()) {
+      wx.removeStorageSync(key);
+    } else {
+      localStorage.removeItem(key);
+    }
+  },
+
+  // 获取所有存储键（用于主任务遍历子任务数据）
+  getAllKeys() {
+    if (this.isMiniProgram()) {
+      return wx.getStorageInfoSync().keys || [];
+    } else {
+      return Object.keys(localStorage) || [];
+    }
+  }
+};
+
+// 获取今日日期键
+const getTodayDateKey = () => {
+  const date = new Date();
+  return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+};
+
+// 存储键名生成：主任务通过自身subtasks的preId关联，区分子任务/主任务
+const getStorageKeys = (taskRelatedId, isSubTask = false, mainTaskPreId = '') => {
+  const todayDate = getTodayDateKey();
+  if (isSubTask && mainTaskPreId) {
+    // 子任务存储键：包含子任务ID和关联的主任务preId
+    return {
+      todayKey: `study_today_sub_${taskRelatedId}_pre_${mainTaskPreId}_${todayDate}`,
+      totalKey: `study_total_sub_${taskRelatedId}_pre_${mainTaskPreId}`
+    };
+  }
+  // 主任务存储键：仅主任务ID（或preId）
+  return {
+    todayKey: `study_today_main_${taskRelatedId}_${todayDate}`,
+    totalKey: `study_total_main_${taskRelatedId}`
+  };
+};
+
+// 计划基础信息
+const planStatus = ref('进行中');
+const totalTargetHours = ref(taskObj?.targetHours || 12); // 主任务目标时长
+const todayAccumulatedHours = ref(0);
+const totalAccumulatedHours = ref(0);
+
+// 获取任务关联ID（主任务取自身ID/预ID，子任务取自身ID+关联主任务preId）
+const getTaskRelatedIds = () => {
+  const mainTaskId = taskObj?.id || taskObj?.preId || null; // 主任务自身ID或preId
+  const subTaskId = subtaskObj?.id || null; // 子任务ID
+  const subTaskRelateMainPreId = subtaskObj?.preId || null; // 子任务关联的主任务preId
+  return { mainTaskId, subTaskId, subTaskRelateMainPreId };
+};
+
+// ======================================
+// 核心：主任务通过自身subtasks数组的preId累加所有关联子任务数据
+// ======================================
+const subtasksSummary = ref({
+  totalSubtasksToday: 0, // 所有子任务今日累计总和
+  totalSubtasksTotal: 0, // 所有子任务总累计总和
+  totalSubtasksRemaining: 0 // 所有子任务剩余目标总和
+});
+
+// 计算主任务关联的所有子任务数据总和（基于主任务自身subtasks数组的preId）
+const calculateSubtasksSummary = () => {
+  if (!taskObj || !Array.isArray(taskObj.subtasks) || taskObj.subtasks.length === 0) {
+    return { totalSubtasksToday: 0, totalSubtasksTotal: 0, totalSubtasksRemaining: 0 };
+  }
+
+  let totalToday = 0;
+  let totalTotal = 0;
+  let totalTarget = 0;
+  const todayDate = getTodayDateKey();
+  const mainTaskId = taskObj?.id || taskObj?.preId; // 主任务自身标识
+
+  // 遍历主任务自身的subtasks数组，通过每个子任务的preId（或id）匹配存储数据
+  taskObj.subtasks.forEach(subtask => {
+    const subtaskId = subtask.id;
+    const subtaskPreId = subtask.preId || mainTaskId; // 子任务关联的主任务preId（核心关联依据）
+    
+    // 1. 获取该子任务的今日数据
+    const { todayKey } = getStorageKeys(subtaskId, true, subtaskPreId);
+    const subtaskTodayData = StorageUtil.get(todayKey, { todayHours: 0 });
+    totalToday += parseFloat(subtaskTodayData.todayHours || 0);
+
+    // 2. 获取该子任务的总数据
+    const { totalKey } = getStorageKeys(subtaskId, true, subtaskPreId);
+    const subtaskTotalData = StorageUtil.get(totalKey, { totalHours: 0, targetHours: 0 });
+    totalTotal += parseFloat(subtaskTotalData.totalHours || 0);
+    totalTarget += parseFloat(subtask.targetHours || subtaskTotalData.targetHours || 0); // 子任务目标时长
+  });
+
+  // 3. 计算剩余目标：总目标（主任务优先，无则用子任务目标总和） - 子任务总累计
+  const finalTarget = taskObj?.targetHours || totalTarget;
+  const totalRemaining = Math.max(0, parseFloat(finalTarget) - parseFloat(totalTotal));
+
+  return {
+    totalSubtasksToday: parseFloat(totalToday.toFixed(2)),
+    totalSubtasksTotal: parseFloat(totalTotal.toFixed(2)),
+    totalSubtasksRemaining: parseFloat(totalRemaining.toFixed(2))
+  };
+};
+
+// 更新主任务子任务汇总数据
+const updateSubtasksSummary = () => {
+  // 仅主任务场景执行汇总（subtaskObj为null，taskObj存在）
+  if (taskObj && !subtaskObj) {
+    const summary = calculateSubtasksSummary();
+    subtasksSummary.value = summary;
+    // 同步更新主任务页面的累计时长展示
+    todayAccumulatedHours.value = summary.totalSubtasksToday;
+    totalAccumulatedHours.value = summary.totalSubtasksTotal;
+  }
+};
+
+// 格式化时间
+const formattedCurrentTime = computed(() => {
+  const h = Math.floor(totalSeconds.value / 3600).toString().padStart(2, '0');
+  const m = Math.floor((totalSeconds.value % 3600) / 60).toString().padStart(2, '0');
+  const s = (totalSeconds.value % 60).toString().padStart(2, '0');
+  return `${h}:${m}:${s}`;
+});
+
+// 子任务自身格式化数据
+const formattedTodayAccumulatedTime = computed(() => {
+  const hours = Math.floor(todayAccumulatedHours.value);
+  const minutes = Math.round((todayAccumulatedHours.value - hours) * 60);
+  return `${hours} 小时 ${minutes} 分钟`;
+});
+
+const formattedRemainingTime = computed(() => {
+  const remaining = (subtaskObj?.targetHours || totalTargetHours.value) - totalAccumulatedHours.value;
+  const hours = Math.floor(remaining);
+  const minutes = Math.round((remaining - hours) * 60);
+  const finalHours = hours < 0 ? 0 : hours;
+  const finalMinutes = minutes < 0 ? 0 : minutes;
+  return `${finalHours} 小时 ${finalMinutes} 分钟`;
+});
+
+// 主任务子任务汇总格式化数据
+const formattedSubtasksToday = computed(() => {
+  const hours = Math.floor(subtasksSummary.value.totalSubtasksToday);
+  const minutes = Math.round((subtasksSummary.value.totalSubtasksToday - hours) * 60);
+  return `${hours} 小时 ${minutes} 分钟`;
+});
+
+const formattedSubtasksRemaining = computed(() => {
+  const hours = Math.floor(subtasksSummary.value.totalSubtasksRemaining);
+  const minutes = Math.round((subtasksSummary.value.totalSubtasksRemaining - hours) * 60);
+  return `${hours} 小时 ${minutes} 分钟`;
+});
+
+// 进度百分比（区分主任务/子任务）
+const progressPercent = computed(() => {
+  if (taskObj && !subtaskObj) {
+    return subtasksProgressPercent.value;
+  }
+  const target = subtaskObj?.targetHours || totalTargetHours.value;
+  if (target === 0) return 0;
+  const percent = (totalAccumulatedHours.value / target) * 100;
+  return percent > 100 ? 100 : percent.toFixed(2);
+});
+
+const subtasksProgressPercent = computed(() => {
+  const target = taskObj?.targetHours || subtasksSummary.value.totalSubtasksTotal;
+  if (target === 0) return 0;
+  const percent = (subtasksSummary.value.totalSubtasksTotal / target) * 100;
+  return percent > 100 ? 100 : percent.toFixed(2);
+});
+
+// ======================================
+// 数据加载：区分主任务/子任务
+// ======================================
+const loadStorageData = () => {
+  const { mainTaskId, subTaskId, subTaskRelateMainPreId } = getTaskRelatedIds();
+
+  // 子任务场景：加载自身数据
+  if (subTaskId && !taskObj && subTaskRelateMainPreId) {
+    const { todayKey, totalKey } = getStorageKeys(subTaskId, true, subTaskRelateMainPreId);
+    // 加载今日数据
+    const todayStorageData = StorageUtil.get(todayKey, { todayHours: 0, records: [] });
+    todayAccumulatedHours.value = parseFloat(todayStorageData.todayHours || 0);
+    todayStudyRecords.value = todayStorageData.records || [];
+    // 加载总数据
+    const totalStorageData = StorageUtil.get(totalKey, { totalHours: 0, records: [], targetHours: subtaskObj.targetHours || 0 });
+    totalAccumulatedHours.value = parseFloat(totalStorageData.totalHours || 0);
+    totalStudyRecords.value = totalStorageData.records || [];
+    // 同步子任务目标时长
+    totalTargetHours.value = subtaskObj.targetHours || 12;
+  } 
+  // 主任务场景：通过自身subtasks数组的preId加载所有关联子任务汇总数据
+  else if (mainTaskId && taskObj && !subTaskId) {
+    updateSubtasksSummary();
+  }
+
+  // 加载计时器状态（仅子任务）
+  if (subTaskId && !taskObj && subTaskRelateMainPreId) {
+    const timerStateKey = `timer_state_sub_${subTaskId}_pre_${subTaskRelateMainPreId}_${getTodayDateKey()}`;
+    const timerState = StorageUtil.get(timerStateKey, null);
+    if (timerState && !timerState.completed) {
+      totalSeconds.value = timerState.seconds;
+      isRunning.value = timerState.isRunning;
+      if (isRunning.value) {
+        startTimer(true);
+      }
+    }
+  }
+};
+
+// ======================================
+// 数据保存：区分主任务/子任务，确保子任务数据可被主任务检索
+// ======================================
+const saveTodayDataToStorage = () => {
+  const { subTaskId, subTaskRelateMainPreId } = getTaskRelatedIds();
+  if (!subTaskId || taskObj || !subTaskRelateMainPreId) return; // 仅子任务保存今日数据
+
+  const { todayKey } = getStorageKeys(subTaskId, true, subTaskRelateMainPreId);
+  const todayData = {
+    todayHours: todayAccumulatedHours.value,
+    records: todayStudyRecords.value,
+    preId: subTaskRelateMainPreId // 存储关联的主任务preId
+  };
+  StorageUtil.set(todayKey, todayData);
+
+  // 保存后同步更新对应主任务的汇总（若主任务页面打开，刷新后生效）
+  updateSubtasksSummary();
+};
+
+const saveTotalDataToStorage = () => {
+  const { subTaskId, subTaskRelateMainPreId } = getTaskRelatedIds();
+  if (!subTaskId || taskObj || !subTaskRelateMainPreId) return; // 仅子任务保存总数据
+
+  const { totalKey } = getStorageKeys(subTaskId, true, subTaskRelateMainPreId);
+  const totalData = {
+    totalHours: totalAccumulatedHours.value,
+    records: totalStudyRecords.value,
+    targetHours: subtaskObj.targetHours || 0, // 保存子任务自身目标时长
+    preId: subTaskRelateMainPreId // 存储关联的主任务preId
+  };
+  StorageUtil.set(totalKey, totalData);
+
+  // 保存后同步更新对应主任务的汇总
+  updateSubtasksSummary();
+};
+
+// 保存计时器状态（仅子任务）
+const saveTimerState = () => {
+  const { subTaskId, subTaskRelateMainPreId } = getTaskRelatedIds();
+  if (!subTaskId || taskObj || !subTaskRelateMainPreId) return;
+
+  const timerStateKey = `timer_state_sub_${subTaskId}_pre_${subTaskRelateMainPreId}_${getTodayDateKey()}`;
+  const timerState = {
+    seconds: totalSeconds.value,
+    isRunning: isRunning.value,
+    completed: false,
+    timestamp: new Date().getTime(),
+    preId: subTaskRelateMainPreId
+  };
+  StorageUtil.set(timerStateKey, timerState);
+};
+
+// ======================================
+// 计时器相关（仅子任务可用）
+// ======================================
+const isRunning = ref(false);
+const totalSeconds = ref(0);
+let timerInterval = null;
+const hasShownCompleteModal = ref(false);
+
+const startTimer = (resume = false) => {
+  const { subTaskId, subTaskRelateMainPreId } = getTaskRelatedIds();
+  if (isRunning.value || taskObj || !subTaskId || !subTaskRelateMainPreId) return; // 仅子任务可启动计时
+
+  if (!resume) {
+    currentSession.value = {
+      ...currentSession.value,
+      startTime: new Date().toISOString(),
+      status: 'active',
+      lastActivityTime: new Date().toISOString()
+    };
+  }
+
+  isRunning.value = true;
+  planStatus.value = '进行中';
+  hasShownCompleteModal.value = false;
+  
+  timerInterval = setInterval(() => {
+    totalSeconds.value++;
+    saveTimerState(); // 实时保存计时器状态
+    
+    // 检测是否达到单次目标时长
+    const targetSeconds = singleTargetDuration.value * 60;
+    if (totalSeconds.value >= targetSeconds && !hasShownCompleteModal.value) {
+      hasShownCompleteModal.value = true;
+      showCompleteModal.value = true;
+      setTimeout(() => {
+        stopAndSaveTimer();
+      }, 1500);
+    }
+  }, 1000);
+
+  if (!resume) {
+    showSmartTip.value = true;
+    smartTipText.value = '计时已开始，专注当下，高效学习吧！';
+    setTimeout(() => {
+      showSmartTip.value = false;
+    }, 3000);
+  }
+};
+
+const pauseTimer = () => {
+  const { subTaskId, subTaskRelateMainPreId } = getTaskRelatedIds();
+  if (!isRunning.value || taskObj || !subTaskId || !subTaskRelateMainPreId) return; // 仅子任务可暂停
+
+  currentSession.value.status = 'paused';
+  currentSession.value.lastActivityTime = new Date().toISOString();
+
+  isRunning.value = false;
+  planStatus.value = '已暂停';
+  clearInterval(timerInterval);
+  saveTimerState(); // 暂停时保存状态
+  
+  showSmartTip.value = true;
+  smartTipText.value = '计时已暂停，记得继续完成学习计划哦！';
+  setTimeout(() => {
+    showSmartTip.value = false;
+  }, 3000);
+};
+
+const stopAndSaveTimer = async () => {
+  const { subTaskId, subTaskRelateMainPreId } = getTaskRelatedIds();
+  if ((!isRunning.value && !hasShownCompleteModal.value) || taskObj || !subTaskId || !subTaskRelateMainPreId) return; // 仅子任务可结束
+
+  clearInterval(timerInterval);
+  const timerStateKey = `timer_state_sub_${subTaskId}_pre_${subTaskRelateMainPreId}_${getTodayDateKey()}`;
+  StorageUtil.remove(timerStateKey); // 清除计时器状态
+  
+  // 计算时间相关数据
+  const endTime = new Date();
+  const startTime = new Date(endTime.getTime() - totalSeconds.value * 1000);
+  const currentMinutes = Math.floor(totalSeconds.value / 60);
+  const currentHours = parseFloat((totalSeconds.value / 3600).toFixed(2));
+  const currentDuration = formattedCurrentTime.value.replace(/^00:/, '');
+  const isoStartTime = startTime.toISOString();
+  const isoEndTime = endTime.toISOString();
+
+  // 更新子任务累计时长
+  todayAccumulatedHours.value = parseFloat((todayAccumulatedHours.value + currentHours).toFixed(2));
+  totalAccumulatedHours.value = parseFloat((totalAccumulatedHours.value + currentHours).toFixed(2));
+
+  // 构造会话记录
+  const sessionRecord = {
+    user_id: 0,
+    plan_id: subtaskObj.planId || taskObj?.planId || 'plan_001',
+    sub_task_id: subTaskId,
+    main_task_preId: subTaskRelateMainPreId,
+    session_status: 'completed',
+    start_time: isoStartTime,
+    last_activity_time: isoEndTime,
+    end_time: isoEndTime,
+    effective_minutes: currentMinutes,
+    total_duration_minutes: currentMinutes,
+    auto_completed: hasShownCompleteModal.value,
+    createTime: endTime.toLocaleTimeString(),
+    duration: currentDuration,
+    completedTasks: taskList.value?.filter(t => t.completed).map(t => t.name.split(' ')[0]).join('、') || '无'
+  };
+
+  // 更新本地记录列表
+  todayStudyRecords.value.unshift(sessionRecord);
+  totalStudyRecords.value.unshift(sessionRecord);
+
+  // 保存子任务数据到存储
+  saveTodayDataToStorage();
+  saveTotalDataToStorage();
+
+  // 发送到服务器
+  const dayStuData = {
+    userId: sessionRecord.user_id,
+    planId: sessionRecord.plan_id,
+    mainTaskPreId: subTaskRelateMainPreId,
+    subTaskId: subTaskId,
+    todayDate: getTodayDateKey(),
+    todayTotalHours: todayAccumulatedHours.value,
+    todayTotalMinutes: Math.round(todayAccumulatedHours.value * 60),
+    sessions: todayStudyRecords.value,
+    updateTime: isoEndTime
+  };
+
+  try {
+    const result = await sendDayStu(dayStuData);
+    if (result && result.code === 200) {
+      console.log('子任务学习数据发送成功：', result);
+    } else {
+      console.error('子任务学习数据发送失败：', result?.msg || '接口返回异常');
+      const retryQueue = StorageUtil.get('study_retry_queue', []);
+      retryQueue.push({ data: dayStuData, timestamp: Date.now() });
+      StorageUtil.set('study_retry_queue', retryQueue);
+    }
+  } catch (error) {
+    console.error('接口请求异常：', error);
+    const retryQueue = StorageUtil.get('study_retry_queue', []);
+    retryQueue.push({ data: dayStuData, timestamp: Date.now() });
+    StorageUtil.set('study_retry_queue', retryQueue);
+  }
+
+  // 重置计时器状态
+  isRunning.value = false;
+  totalSeconds.value = 0;
+  hasShownCompleteModal.value = false;
+  showCompleteModal.value = false;
+  planStatus.value = '进行中';
+
+  // 提示信息
+  showSmartTip.value = true;
+  smartTipText.value = `本次学习时长：${currentDuration}，今日累计：${formattedTodayAccumulatedTime.value}，已保存并同步！`;
+  setTimeout(() => {
+    showSmartTip.value = false;
+  }, 3000);
+};
+
+// ======================================
+// 其他功能模块
+// ======================================
+const showSettingsMenu = ref(false);
+const settingsRef = ref(null);
+
+onMounted(() => {
+  loadStorageData();
+  updateTaskList();
+
+  const handleClickOutside = (e) => {
+    if (settingsRef.value && !settingsRef.value.contains(e.target)) {
+      showSettingsMenu.value = false;
+    }
+  };
+  document.addEventListener('click', handleClickOutside);
+
+  const handleBeforeUnload = () => {
+    const { subTaskId, subTaskRelateMainPreId } = getTaskRelatedIds();
+    if (isRunning.value && subTaskId && !taskObj && subTaskRelateMainPreId) {
+      saveTimerState();
+    }
+  };
+  
+  window.addEventListener('beforeunload', handleBeforeUnload);
+  
+  return () => {
+    document.removeEventListener('click', handleClickOutside);
+    window.removeEventListener('beforeunload', handleBeforeUnload);
+    clearInterval(timerInterval);
+  };
+});
+
+const handleBack = () => {
+  if (StorageUtil.isMiniProgram()) {
+    wx.navigateBack({ delta: 1 });
+  } else {
+    router.push('./study-plan');  
+  }
+};
+
+const handleEditPlan = () => {
+  showSettingsMenu.value = false;
+  alert('进入编辑计划页面');
+};
+
+const handlePausePlan = () => {
+  showSettingsMenu.value = false;
+  if (planStatus.value === '进行中') {
+    planStatus.value = '已暂停';
+    pauseTimer();
+  } else {
+    planStatus.value = '进行中';
+    showSmartTip.value = true;
+    smartTipText.value = '计划已恢复，开始继续学习吧！';
+    setTimeout(() => {
+      showSmartTip.value = false;
+    }, 3000);
+  }
+};
+
+const handleGenerateReport = () => {
+  showSettingsMenu.value = false;
+  alert('学习报告已生成');
+};
+
+const handleDeletePlan = () => {
+  showSettingsMenu.value = false;
+  const { mainTaskId, subTaskId, subTaskRelateMainPreId } = getTaskRelatedIds();
+  if (!mainTaskId && !subTaskId) return;
+
+  if (confirm('确定要删除该计划/任务吗？删除后数据将无法恢复！')) {
+    // 子任务：删除自身数据
+    if (subTaskId && !taskObj && subTaskRelateMainPreId) {
+      const { todayKey, totalKey } = getStorageKeys(subTaskId, true, subTaskRelateMainPreId);
+      const timerStateKey = `timer_state_sub_${subTaskId}_pre_${subTaskRelateMainPreId}_${getTodayDateKey()}`;
+      StorageUtil.remove(todayKey);
+      StorageUtil.remove(totalKey);
+      StorageUtil.remove(timerStateKey);
+    } 
+    // 主任务：删除自身及所有关联子任务数据（基于自身subtasks数组的preId）
+    else if (mainTaskId && taskObj && !subTaskId) {
+      // 先删除主任务自身数据
+      const { todayKey: mainTodayKey, totalKey: mainTotalKey } = getStorageKeys(mainTaskId);
+      StorageUtil.remove(mainTodayKey);
+      StorageUtil.remove(mainTotalKey);
+
+      // 再遍历主任务subtasks数组，删除所有关联子任务数据
+      if (Array.isArray(taskObj.subtasks)) {
+        taskObj.subtasks.forEach(subtask => {
+          const subtaskId = subtask.id;
+          const subtaskPreId = subtask.preId || mainTaskId;
+          const { todayKey, totalKey } = getStorageKeys(subtaskId, true, subtaskPreId);
+          const timerStateKey = `timer_state_sub_${subtaskId}_pre_${subtaskPreId}_${getTodayDateKey()}`;
+          StorageUtil.remove(todayKey);
+          StorageUtil.remove(totalKey);
+          StorageUtil.remove(timerStateKey);
+        });
+      }
+    }
+    
+    alert('计划/任务已删除');
+    handleBack();
+  }
+};
+
+// 标签页相关
+const activeTab = ref('time-arrange');
+
+// 单次目标时长
+const singleTargetDuration = ref(45);
+const showCustomDuration = ref(false);
+const customDuration = ref('');
+
+const confirmCustomDuration = () => {
+  const duration = parseInt(customDuration.value);
+  if (duration && duration >= 1 && duration <= 180) {
+    singleTargetDuration.value = duration;
+    showCustomDuration.value = false;
+    customDuration.value = '';
+    hasShownCompleteModal.value = false;
+  } else {
+    alert('请输入1-180之间的有效数字！');
+  }
+};
+
+// 任务分解：主任务显示所有子任务，子任务显示自身详情
+const taskList = ref([]);
+const updateTaskList = () => {
+  const { mainTaskId } = getTaskRelatedIds();
+  // 主任务：显示自身subtasks数组中的所有子任务
+  if (taskObj && !subtaskObj && mainTaskId) {
+    taskList.value = taskObj.subtasks?.map(subtask => ({
+      id: subtask.id,
+      name: subtask.planName || subtask.name,
+      completed: subtask.completed || false,
+      accumulatedHours: getSubtaskAccumulatedHours(subtask.id, subtask.preId || mainTaskId),
+      targetHours: subtask.targetHours || 0,
+      preId: subtask.preId || mainTaskId // 保留子任务的preId关联
+    })) || [];
+  } 
+  // 子任务：显示自身信息
+  else if (subtaskObj && !taskObj) {
+    taskList.value = [{
+      id: subtaskObj.id,
+      name: subtaskObj.planName,
+      completed: subtaskObj.completed || false,
+      accumulatedHours: totalAccumulatedHours.value,
+      targetHours: subtaskObj.targetHours || 0,
+      preId: subtaskObj.preId // 显示子任务关联的主任务preId
+    }];
+  } else {
+    taskList.value = [];
+  }
+};
+
+// 获取单个子任务的累计时长（用于主任务任务列表展示，基于子任务id和preId）
+const getSubtaskAccumulatedHours = (subTaskId, mainTaskPreId) => {
+  const { totalKey } = getStorageKeys(subTaskId, true, mainTaskPreId);
+  const totalStorageData = StorageUtil.get(totalKey, { totalHours: 0 });
+  return parseFloat(totalStorageData.totalHours || 0).toFixed(2);
+};
+
+const addNewTask = () => {
+  const { mainTaskId } = getTaskRelatedIds();
+  if (!taskObj || !mainTaskId) return; // 仅主任务可添加子任务
+
+  const newTask = {
+    id: `subtask_${Date.now()}`,
+    name: '新子任务',
+    planName: taskObj.planName,
+    completed: false,
+    accumulatedHours: 0,
+    targetHours: 0,
+    preId: mainTaskId, // 给新子任务添加preId，关联当前主任务
+  };
+
+  // 初始化主任务subtasks数组（若不存在）
+  if (!Array.isArray(taskObj.subtasks)) {
+    taskObj.subtasks = [];
+  }
+  taskObj.subtasks.push(newTask);
+  taskList.value.push(newTask);
+
+  // 更新主任务存储的子任务列表
+  if (StorageUtil.isMiniProgram()) {
+    wx.setStorageSync('currentTask', JSON.stringify(taskObj));
+  } else {
+    localStorage.setItem('currentTask', JSON.stringify(taskObj));
+  }
+};
+
+// 学习记录
+const todayStudyRecords = ref([]);
+const totalStudyRecords = ref([]);
+
+// 热图相关
+const showHeatmapTip = ref(false);
+const heatmapTipText = ref('');
+
+const getHeatmapColor = (index) => {
+  const random = Math.random();
+  if (random < 0.3) return '#e8f5e9';
+  if (random < 0.6) return '#a5d6a7';
+  if (random < 0.9) return '#66bb6a';
+  return '#2e7d32';
+};
+
+// 笔记相关
+const showNoteModal = ref(false);
+const currentNote = ref('');
+
+const saveNote = () => {
+  if (!currentNote.value.trim()) {
+    alert('请输入笔记内容！');
+    return;
+  }
+  alert(`笔记已保存：${currentNote.value}`);
+  showNoteModal.value = false;
+  currentNote.value = '';
+};
+
+// 智能提示
+const showSmartTip = ref(false);
+const smartTipText = ref('');
+
+// 达标弹窗
+const showCompleteModal = ref(false);
+const handleCloseCompleteModal = () => {
+  showCompleteModal.value = false;
+};
+
+// 会话相关状态
+const currentSession = ref({
+  id: null,
+  startTime: null,
+  endTime: null,
+  status: 'active',
+  effectiveMinutes: 0,
+  totalDurationMinutes: 0
+});
+
+// 组件销毁时清除计时器
+onUnmounted(() => {
+  clearInterval(timerInterval);
+});
+</script>
+
+<style scoped>
+/* 原有样式保持不变，主任务汇总样式已包含 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Inter', '微软雅黑', sans-serif;
+}
+
+.study-plan-details {
+  width: 100%;
+  min-height: 100vh;
+  background-color: #ffffff;
+  color: #1a1a1a;
+  overflow-x: hidden;
+}
+
+.plan-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 40px;
+  height: 80px;
+  border-bottom: 1px solid #f0f0f0;
+  position: relative;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.back-btn {
+  padding: 8px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background-color: transparent;
+  color: #666666;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s;
+  white-space: nowrap;
+}
+
+.back-btn:hover {
+  border-color: #2196f3;
+  color: #2196f3;
+  background-color: #f5f9ff;
+}
+
+.plan-title {
+  font-size: 28px;
+  font-weight: 600;
+  color: #1a1a1a;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-tag {
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.status-tag.running {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+}
+
+.total-target {
+  font-size: 16px;
+  color: #666666;
+  margin-right: 20px;
+}
+
+.plan-settings {
+  position: relative;
+  display: inline-block;
+}
+
+.settings-btn {
+  font-size: 20px;
+  border: none;
+  background: transparent;
+  color: #666666;
+  cursor: pointer;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  transition: background-color 0.3s;
+}
+
+.settings-btn:hover {
+  background-color: #f0f0f0;
+}
+
+.settings-dropdown {
+  position: absolute;
+  top: 50px;
+  right: 0;
+  width: 180px;
+  background-color: #ffffff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  z-index: 100;
+}
+
+.dropdown-item {
+  padding: 12px 16px;
+  font-size: 14px;
+  color: #333333;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.dropdown-item:hover {
+  background-color: #f5f5f5;
+}
+
+.dropdown-item.danger {
+  color: #f44336;
+}
+
+.plan-core {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 0;
+  position: relative;
+}
+
+.timer-wrapper {
+  position: relative;
+  margin-bottom: 30px;
+}
+
+.timer-container {
+  cursor: pointer;
+}
+
+.timer-circle {
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  border: 2px solid #2196f3;
+  background-color: #f8f9fa;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  box-shadow: 0 4px 20px rgba(33, 150, 243, 0.1);
+  transition: transform 0.2s;
+}
+
+.timer-circle:hover {
+  transform: scale(1.02);
+}
+
+.timer-display {
+  font-size: 24px;
+  color: #2196f3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.timer-display span {
+  font-size: 28px;
+}
+
+.timer-buttons {
+  display: flex;
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.timer-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.pause-btn {
+  background-color: #fff3e0;
+  color: #ef6c00;
+}
+
+.pause-btn:hover {
+  background-color: #ffe0b2;
+}
+
+.stop-btn {
+  background-color: #ffebee;
+  color: #f44336;
+}
+
+.stop-btn:hover {
+  background-color: #ffcdd2;
+}
+
+.quick-note-btn {
+  position: absolute;
+  top: -20px;
+  right: -120px;
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: none;
+  background-color: #e3f2fd;
+  color: #2196f3;
+  font-size: 14px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(33, 150, 243, 0.2);
+  transition: background-color 0.3s;
+  white-space: nowrap;
+}
+
+.quick-note-btn:hover {
+  background-color: #bbdefb;
+}
+
+.study-summary {
+  display: flex;
+  gap: 60px;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.summary-item {
+  text-align: center;
+}
+
+.summary-label {
+  font-size: 14px;
+  color: #666666;
+  margin-bottom: 8px;
+}
+
+.summary-value {
+  font-size: 20px;
+  color: #1a1a1a;
+  font-weight: 500;
+}
+
+/* 主任务汇总样式 */
+.main-task-summary-wrapper {
+  width: 100%;
+  max-width: 500px;
+  background-color: #f8f9ff;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 2px 15px rgba(33, 150, 243, 0.08);
+  margin-top: 20px;
+}
+
+.main-summary-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2196f3;
+  text-align: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e3f2fd;
+}
+
+.main-summary-content {
+  display: flex;
+  gap: 40px;
+  justify-content: center;
+  align-items: center;
+}
+
+.main-summary-item {
+  flex: 1;
+}
+
+.main-summary-item .summary-label {
+  font-size: 15px;
+  color: #424242;
+}
+
+.main-summary-item .summary-value {
+  font-size: 22px;
+  color: #2196f3;
+  font-weight: 600;
+}
+
+.plan-details-tabs {
+  width: 90%;
+  margin: 0 auto;
+  padding-bottom: 60px;
+}
+
+.tabs-header {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid #f0f0f0;
+  margin-bottom: 24px;
+}
+
+.tab-btn {
+  padding: 12px 24px;
+  border: none;
+  background: transparent;
+  font-size: 16px;
+  font-weight: 500;
+  color: #666666;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.3s;
+}
+
+.tab-btn.active {
+  color: #2196f3;
+  border-bottom: 2px solid #2196f3;
+}
+
+.tab-btn:hover {
+  color: #2196f3;
+  background-color: #f5f9ff;
+}
+
+.tabs-content {
+  background-color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  padding: 24px;
+}
+
+.tab-panel {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.module-title {
+  font-size: 18px;
+  font-weight: 500;
+  color: #1a1a1a;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #2196f3;
+  display: inline-block;
+}
+
+.arrange-module {
+  margin-bottom: 40px;
+}
+
+.duration-buttons {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.duration-btn {
+  padding: 8px 16px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.duration-btn.selected {
+  background-color: #2196f3;
+  color: #ffffff;
+  border-color: #2196f3;
+}
+
+.duration-btn:hover:not(.selected) {
+  border-color: #2196f3;
+  color: #2196f3;
+}
+
+.custom-btn {
+  color: #2196f3;
+  border-color: #2196f3;
+}
+
+.task-list {
+  margin-bottom: 24px;
+}
+
+.task-item {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.task-checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: #2196f3;
+  cursor: pointer;
+}
+
+.task-name {
+  font-size: 16px;
+  color: #1a1a1a;
+  flex: 1;
+}
+
+.task-budget {
+  font-size: 14px;
+  color: #666666;
+}
+
+.add-task-btn {
+  padding: 8px 16px;
+  border: 1px dashed #e0e0e0;
+  border-radius: 8px;
+  background-color: transparent;
+  color: #666666;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.add-task-btn:hover {
+  border-color: #2196f3;
+  color: #2196f3;
+  background-color: #f5f9ff;
+}
+
+.record-list {
+  margin-bottom: 24px;
+}
+
+.record-item {
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 14px;
+  color: #333333;
+}
+
+.empty-record, .empty-heatmap {
+  text-align: center;
+  padding: 20px 0;
+  color: #666666;
+  font-size: 14px;
+  background-color: #fafafa;
+  border-radius: 8px;
+}
+
+.progress-container {
+  margin-bottom: 24px;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background-color: #f0f0f0;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.5s ease-in-out;
+}
+
+.progress-text {
+  font-size: 14px;
+  color: #666666;
+}
+
+.calendar-heatmap {
+  margin-top: 24px;
+}
+
+.heatmap-header {
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 12px;
+}
+
+.heatmap-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.heatmap-block {
+  width: 20px;
+  height: 20px;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.heatmap-tip {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #666666;
+}
+
+.modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  width: 100%;
+  max-width: 500px;
+  background-color: #ffffff;
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.custom-modal {
+  max-width: 300px;
+}
+
+.modal-title {
+  font-size: 18px;
+  font-weight: 500;
+  margin-bottom: 16px;
+  color: #1a1a1a;
+}
+
+.note-input {
+  width: 100%;
+  height: 150px;
+  padding: 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  resize: none;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+.duration-input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+.modal-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.modal-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.cancel-btn {
+  background-color: #f0f0f0;
+  color: #666666;
+}
+
+.cancel-btn:hover {
+  background-color: #e0e0e0;
+}
+
+.confirm-btn {
+  background-color: #2196f3;
+  color: #ffffff;
+}
+
+.confirm-btn:hover {
+  background-color: #1976d2;
+}
+
+.complete-modal {
+  max-width: 400px;
+  text-align: center;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: all 0.3s ease-in-out;
+}
+
+.complete-modal.animate {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.complete-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.complete-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: #2e7d32;
+  margin-bottom: 8px;
+}
+
+.complete-desc {
+  font-size: 14px;
+  color: #666666;
+  margin-bottom: 24px;
+}
+
+.smart-tip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background-color: #e8f5e9;
+  color: #2e7d32;
+  padding: 12px 24px;
+  text-align: center;
+  font-size: 14px;
+  z-index: 2000;
+  transform: translateY(-100%);
+  transition: transform 0.3s ease-in-out;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+}
+
+.tip-close-btn {
+  background: transparent;
+  border: none;
+  color: #2e7d32;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+/* 响应式适配 */
+@media (max-width: 768px) {
+  .plan-header {
+    padding: 0 16px;
+    height: 70px;
+  }
+
+  .header-left {
+    gap: 12px;
+  }
+
+  .back-btn {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  .plan-title {
+    font-size: 18px;
+  }
+
+  .total-target {
+    font-size: 12px;
+    margin-right: 10px;
+    white-space: nowrap;
+  }
+
+  .timer-circle {
+    width: 200px;
+    height: 200px;
+  }
+
+  .quick-note-btn {
+    top: -15px;
+    right: -50px;
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  .study-summary {
+    gap: 20px;
+  }
+
+  .summary-item {
+    width: 30%;
+  }
+
+  .summary-value {
+    font-size: 16px;
+  }
+
+  /* 主任务汇总响应式 */
+  .main-task-summary-wrapper {
+    width: 90%;
+    padding: 16px;
+  }
+
+  .main-summary-content {
+    gap: 20px;
+  }
+
+  .plan-details-tabs {
+    width: 95%;
+  }
+
+  .tabs-header {
+    flex-wrap: wrap;
+    gap: 0;
+  }
+
+  .tab-btn {
+    padding: 8px 12px;
+    font-size: 14px;
+    flex: 1;
+    text-align: center;
+  }
+}
+</style>

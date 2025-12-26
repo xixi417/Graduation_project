@@ -9,9 +9,16 @@ import request from '@/utils/request';
 //   });
 // }
 
+// export const sendCode = async (data) => {
+//   return request({
+//     url: '/sendCode',
+//     method: 'get',
+//     data
+//   });
+// }
+
 export const register = async (data) => {
-  // TODO: 根据你的实际后端接口调整
-  // 这里是一个示例实现，你需要替换为实际的API调用
+
   
   // 模拟API调用
   return new Promise((resolve) => {

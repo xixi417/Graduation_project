@@ -112,7 +112,7 @@ const functionList = ref([
   { 
     name: '内容推荐', 
     svgName: 'Recommend.svg', 
-    path: '/content-recommend',
+    path: '/content_recommend/content-recommend',
     bgColor: '#FF9F48', // 橙底
     iconFilter: 'invert(100%) sepia(0%) saturate(0%) hue-rotate(93deg) brightness(103%) contrast(103%)' // 白色图标
   },
@@ -136,7 +136,7 @@ const functionList = ref([
 const tabList = ref([
   { name: '首页', icon: House, path: '/Home' },
   { name: '计划', icon: Flag, path: '/study_plan/study-plan' },
-  { name: '推荐', icon: Star, path: '/content-recommend' },
+  { name: '推荐', icon: Star, path: '/content_recommend/content-recommend' },
   { name: '进度', icon: Timer, path: '/progress-record' },
   { name: '个人', icon: User, path: '/personal_center/profile' }
 ])
@@ -176,7 +176,7 @@ const handleTabClick = (item) => {
 
 // 今日打卡跳转
 const handleCheckIn = () => {
-  router.push('/study_plan/daka')
+  router.push('/daka')
 }
 
 // 折叠面板切换

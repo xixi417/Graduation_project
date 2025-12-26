@@ -22,7 +22,7 @@
       </div>
 
       <!-- 账号管理入口 -->
-      <div class="account-manage" @click="handleAccountManage">
+      <div class="username-manage" @click="handleusernameManage">
         <span class="manage-text">账号管理</span>
         <span class="arrow-icon">→</span>
       </div>
@@ -264,7 +264,7 @@ const handleSignatureEdit = () => {
 }
 
 // 账号管理
-const handleAccountManage = () => {
+const handleusernameManage = () => {
   router.push('/personal_center/accountMan')
 }
 
@@ -399,7 +399,7 @@ const confirmEdit = () => {
   color: #409EFF;
 }
 
-.account-manage {
+.username-manage {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -418,7 +418,7 @@ const confirmEdit = () => {
   color: #999;
 }
 
-.account-manage:hover {
+.username-manage:hover {
   color: #409EFF;
 }
 
