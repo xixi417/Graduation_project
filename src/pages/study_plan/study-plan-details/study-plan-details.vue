@@ -5,25 +5,13 @@
       <div class="header-left">
         <button class="back-btn" @click="handleBack">← 返回</button>
         <h1 class="plan-title">
-          {{ planName }}
-          <span class="status-tag running">{{ planStatus }}</span>
+          <span class="title-text">{{ planName }}</span>
+          <span class="status-tag running">{{ taskStatusMap[planStatus] }}</span>
         </h1>
       </div>
       <div class="header-right">
         <span class="total-target">总目标：{{ totalTargetHours }} 小时</span>
-        <div class="plan-settings" ref="settingsRef">
-          <button class="settings-btn" @click.stop="showSettingsMenu = !showSettingsMenu">
-            ···
-          </button>
-          <div class="settings-dropdown" v-show="showSettingsMenu">
-            <div class="dropdown-item" @click="handleEditPlan">编辑计划</div>
-            <div class="dropdown-item" @click="handlePausePlan">
-              {{ planStatus === '进行中' ? '暂停计划' : '恢复计划' }}
-            </div>
-            <div class="dropdown-item" @click="handleGenerateReport">生成学习报告</div>
-            <div class="dropdown-item danger" @click="handleDeletePlan">删除计划</div>
-          </div>
-        </div>
+        
       </div>
     </header>
 
@@ -277,32 +265,45 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { sendDayStu } from './study-plan.js';
+import { sendDayStu } from './study-plan-details.js';
 import { useRouter } from 'vue-router';
+import { StorageUtil } from '../../../components/StorageUtil';
 
 const router = useRouter();
-
+const taskStatusMap = {
+  'not_started': '未开始',
+  'in_progress': '进行中',
+  'completed': '已完成',
+  'paused': '暂停中',
+  'abandoned': '已放弃'
+}
 // 获取计划名称和任务信息
 const getPlanName = () => {
   try {
     let planName = '';
     let subtaskObj = null;
-    let taskObj = null;
+    let taskObj = null; 
+    let planStatus = '';
     
     if (typeof wx !== 'undefined' && wx.getStorageSync) {
-      subtaskObj = wx.getStorageSync('currentSubtask');
-      taskObj = wx.getStorageSync('currentTask');
+      subtaskObj = wx.getStorageSync('study_plan_currentSubTask');
+      taskObj = wx.getStorageSync('study_plan_currentTask');
       planName = subtaskObj?.planName || taskObj?.planName || '';
+      planStatus = subtaskObj?.status || taskObj.status || '';
     } else {
-      const subtaskStr = localStorage.getItem('currentSubtask');
-      const taskStr = localStorage.getItem('currentTask');
+      const subtaskStr = localStorage.getItem('study_plan_currentSubTask');
+      const taskStr = localStorage.getItem('study_plan_currentTask');
       
       if (subtaskStr) {
         try {
           subtaskObj = JSON.parse(subtaskStr);
           if (subtaskObj?.planName) {
             planName = subtaskObj.planName;
+            planStatus = subtaskObj.status;
           }
+          
+            
+          
         } catch (parseError) {
           console.error('解析 subtask JSON 失败:', parseError);
         }
@@ -314,68 +315,29 @@ const getPlanName = () => {
           if (taskObj?.planName) {
             planName = taskObj.planName;
           }
+          if (taskObj?.status) {
+            planStatus = taskObj.status;
+          }
         } catch (parseError) {
           console.error('解析 task JSON 失败:', parseError);
         }
       }
+      
     }
+    //console.log(subtaskObj);
+
+    return { planName, planStatus, subtaskObj, taskObj };
     
-    return { planName, subtaskObj, taskObj };
   } catch (e) {
     console.error('获取 planName 失败:', e);
-    return { planName: '', subtaskObj: null, taskObj: null };
+    return { planName: '',planStatus:'', subtaskObj: null, taskObj: null };
   }
 };
 
-const { planName: planNameRef, subtaskObj, taskObj } = getPlanName();
+const { planName: planNameRef,planStatus: planStatusRef, subtaskObj, taskObj } = getPlanName();
 const planName = ref(planNameRef);
+const planStatus = ref(planStatusRef);
 
-// 存储工具类
-const StorageUtil = {
-  isMiniProgram: () => {
-    return typeof wx !== 'undefined' && typeof wx.setStorageSync !== 'undefined';
-  },
-
-  set(key, value) {
-    if (this.isMiniProgram()) {
-      wx.setStorageSync(key, JSON.stringify(value));
-    } else {
-      localStorage.setItem(key, JSON.stringify(value));
-    }
-  },
-
-  get(key, defaultValue = null) {
-    try {
-      let data;
-      if (this.isMiniProgram()) {
-        data = wx.getStorageSync(key);
-      } else {
-        data = localStorage.getItem(key);
-      }
-      return data ? JSON.parse(data) : defaultValue;
-    } catch (e) {
-      console.error('获取存储数据失败：', e);
-      return defaultValue;
-    }
-  },
-
-  remove(key) {
-    if (this.isMiniProgram()) {
-      wx.removeStorageSync(key);
-    } else {
-      localStorage.removeItem(key);
-    }
-  },
-
-  // 获取所有存储键（用于主任务遍历子任务数据）
-  getAllKeys() {
-    if (this.isMiniProgram()) {
-      return wx.getStorageInfoSync().keys || [];
-    } else {
-      return Object.keys(localStorage) || [];
-    }
-  }
-};
 
 // 获取今日日期键
 const getTodayDateKey = () => {
@@ -383,7 +345,7 @@ const getTodayDateKey = () => {
   return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
 };
 
-// 存储键名生成：主任务通过自身subtasks的preId关联，区分子任务/主任务
+
 const getStorageKeys = (taskRelatedId, isSubTask = false, mainTaskPreId = '') => {
   const todayDate = getTodayDateKey();
   if (isSubTask && mainTaskPreId) {
@@ -401,8 +363,8 @@ const getStorageKeys = (taskRelatedId, isSubTask = false, mainTaskPreId = '') =>
 };
 
 // 计划基础信息
-const planStatus = ref('进行中');
-const totalTargetHours = ref(taskObj?.targetHours || 12); // 主任务目标时长
+
+const totalTargetHours = ref(taskObj?.targetHours); // 主任务目标时长
 const todayAccumulatedHours = ref(0);
 const totalAccumulatedHours = ref(0);
 
@@ -414,9 +376,8 @@ const getTaskRelatedIds = () => {
   return { mainTaskId, subTaskId, subTaskRelateMainPreId };
 };
 
-// ======================================
-// 核心：主任务通过自身subtasks数组的preId累加所有关联子任务数据
-// ======================================
+//主任务通过自身subtasks数组的preId累加所有关联子任务数据
+
 const subtasksSummary = ref({
   totalSubtasksToday: 0, // 所有子任务今日累计总和
   totalSubtasksTotal: 0, // 所有子任务总累计总和
@@ -443,13 +404,18 @@ const calculateSubtasksSummary = () => {
     // 1. 获取该子任务的今日数据
     const { todayKey } = getStorageKeys(subtaskId, true, subtaskPreId);
     const subtaskTodayData = StorageUtil.get(todayKey, { todayHours: 0 });
+    console.log("1",subtaskTodayData)
     totalToday += parseFloat(subtaskTodayData.todayHours || 0);
 
     // 2. 获取该子任务的总数据
     const { totalKey } = getStorageKeys(subtaskId, true, subtaskPreId);
     const subtaskTotalData = StorageUtil.get(totalKey, { totalHours: 0, targetHours: 0 });
     totalTotal += parseFloat(subtaskTotalData.totalHours || 0);
-    totalTarget += parseFloat(subtask.targetHours || subtaskTotalData.targetHours || 0); // 子任务目标时长
+    totalTarget += parseFloat(subtask.targetHours || subtaskTotalData.targetHours || 0); 
+   
+    console.log("subtask",subtask);
+    console.log("subtaskTotalData",subtaskTotalData)
+    console.log("2",totalTotal)
   });
 
   // 3. 计算剩余目标：总目标（主任务优先，无则用子任务目标总和） - 子任务总累计
@@ -491,12 +457,16 @@ const formattedTodayAccumulatedTime = computed(() => {
 });
 
 const formattedRemainingTime = computed(() => {
-  const remaining = (subtaskObj?.targetHours || totalTargetHours.value) - totalAccumulatedHours.value;
+  const target = parseFloat(subtaskObj?.targetHours || totalTargetHours.value || 0).toFixed(2);
+  const accumulated = parseFloat(totalAccumulatedHours.value || 0).toFixed(2);
+  const remaining = Number(target) - Number(accumulated);
+  if (remaining <= 0) {
+    return '0 小时 0 分钟';
+  }
   const hours = Math.floor(remaining);
   const minutes = Math.round((remaining - hours) * 60);
-  const finalHours = hours < 0 ? 0 : hours;
-  const finalMinutes = minutes < 0 ? 0 : minutes;
-  return `${finalHours} 小时 ${finalMinutes} 分钟`;
+  return `${hours} 小时 ${minutes} 分钟`;
+
 });
 
 // 主任务子任务汇总格式化数据
@@ -511,6 +481,8 @@ const formattedSubtasksRemaining = computed(() => {
   const minutes = Math.round((subtasksSummary.value.totalSubtasksRemaining - hours) * 60);
   return `${hours} 小时 ${minutes} 分钟`;
 });
+
+
 
 // 进度百分比（区分主任务/子任务）
 const progressPercent = computed(() => {
@@ -530,9 +502,9 @@ const subtasksProgressPercent = computed(() => {
   return percent > 100 ? 100 : percent.toFixed(2);
 });
 
-// ======================================
+
 // 数据加载：区分主任务/子任务
-// ======================================
+
 const loadStorageData = () => {
   const { mainTaskId, subTaskId, subTaskRelateMainPreId } = getTaskRelatedIds();
 
@@ -548,7 +520,7 @@ const loadStorageData = () => {
     totalAccumulatedHours.value = parseFloat(totalStorageData.totalHours || 0);
     totalStudyRecords.value = totalStorageData.records || [];
     // 同步子任务目标时长
-    totalTargetHours.value = subtaskObj.targetHours || 12;
+    totalTargetHours.value = subtaskObj.targetHours;
   } 
   // 主任务场景：通过自身subtasks数组的preId加载所有关联子任务汇总数据
   else if (mainTaskId && taskObj && !subTaskId) {
@@ -569,9 +541,8 @@ const loadStorageData = () => {
   }
 };
 
-// ======================================
 // 数据保存：区分主任务/子任务，确保子任务数据可被主任务检索
-// ======================================
+
 const saveTodayDataToStorage = () => {
   const { subTaskId, subTaskRelateMainPreId } = getTaskRelatedIds();
   if (!subTaskId || taskObj || !subTaskRelateMainPreId) return; // 仅子任务保存今日数据
@@ -621,9 +592,9 @@ const saveTimerState = () => {
   StorageUtil.set(timerStateKey, timerState);
 };
 
-// ======================================
+
 // 计时器相关（仅子任务可用）
-// ======================================
+
 const isRunning = ref(false);
 const totalSeconds = ref(0);
 let timerInterval = null;
@@ -642,8 +613,8 @@ const startTimer = (resume = false) => {
     };
   }
 
+
   isRunning.value = true;
-  planStatus.value = '进行中';
   hasShownCompleteModal.value = false;
   
   timerInterval = setInterval(() => {
@@ -678,7 +649,7 @@ const pauseTimer = () => {
   currentSession.value.lastActivityTime = new Date().toISOString();
 
   isRunning.value = false;
-  planStatus.value = '已暂停';
+
   clearInterval(timerInterval);
   saveTimerState(); // 暂停时保存状态
   
@@ -712,7 +683,7 @@ const stopAndSaveTimer = async () => {
 
   // 构造会话记录
   const sessionRecord = {
-    user_id: 0,
+    user_id: StorageUtil.get('user_userid'),
     plan_id: subtaskObj.planId || taskObj?.planId || 'plan_001',
     sub_task_id: subTaskId,
     main_task_preId: subTaskRelateMainPreId,
@@ -735,6 +706,14 @@ const stopAndSaveTimer = async () => {
   // 保存子任务数据到存储
   saveTodayDataToStorage();
   saveTotalDataToStorage();
+  const completeOrIn = () =>{
+    console.log(formattedRemainingTime);
+    if( formattedRemainingTime.value = '0 小时 0 分钟' )
+      return "in_progress"
+    else
+      return "completed"
+    
+  }
 
   // 发送到服务器
   const dayStuData = {
@@ -746,7 +725,8 @@ const stopAndSaveTimer = async () => {
     todayTotalHours: todayAccumulatedHours.value,
     todayTotalMinutes: Math.round(todayAccumulatedHours.value * 60),
     sessions: todayStudyRecords.value,
-    updateTime: isoEndTime
+    updateTime: isoEndTime,
+    status: completeOrIn()
   };
 
   try {
@@ -771,7 +751,7 @@ const stopAndSaveTimer = async () => {
   totalSeconds.value = 0;
   hasShownCompleteModal.value = false;
   showCompleteModal.value = false;
-  planStatus.value = '进行中';
+
 
   // 提示信息
   showSmartTip.value = true;
@@ -781,9 +761,9 @@ const stopAndSaveTimer = async () => {
   }, 3000);
 };
 
-// ======================================
+
 // 其他功能模块
-// ======================================
+
 const showSettingsMenu = ref(false);
 const settingsRef = ref(null);
 
@@ -818,29 +798,11 @@ const handleBack = () => {
   if (StorageUtil.isMiniProgram()) {
     wx.navigateBack({ delta: 1 });
   } else {
-    router.push('./study-plan');  
+    router.push('../study-plan/study-plan');  
   }
 };
 
-const handleEditPlan = () => {
-  showSettingsMenu.value = false;
-  alert('进入编辑计划页面');
-};
 
-const handlePausePlan = () => {
-  showSettingsMenu.value = false;
-  if (planStatus.value === '进行中') {
-    planStatus.value = '已暂停';
-    pauseTimer();
-  } else {
-    planStatus.value = '进行中';
-    showSmartTip.value = true;
-    smartTipText.value = '计划已恢复，开始继续学习吧！';
-    setTimeout(() => {
-      showSmartTip.value = false;
-    }, 3000);
-  }
-};
 
 const handleGenerateReport = () => {
   showSettingsMenu.value = false;
@@ -967,9 +929,9 @@ const addNewTask = () => {
 
   // 更新主任务存储的子任务列表
   if (StorageUtil.isMiniProgram()) {
-    wx.setStorageSync('currentTask', JSON.stringify(taskObj));
+    wx.setStorageSync('study_plan_currentTask', JSON.stringify(taskObj));
   } else {
-    localStorage.setItem('currentTask', JSON.stringify(taskObj));
+    localStorage.setItem('study_plan_currentTask', JSON.stringify(taskObj));
   }
 };
 
@@ -1030,7 +992,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* 原有样式保持不变，主任务汇总样式已包含 */
 * {
   margin: 0;
   padding: 0;
@@ -1060,10 +1021,13 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 16px;
+  min-width: 0; 
+  flex: 1; 
+  margin-right: 20px;
 }
 
 .back-btn {
-  padding: 8px 12px;
+  padding: 2px 12px;
   border: 1px solid #e0e0e0;
   border-radius: 8px;
   background-color: transparent;
@@ -1088,6 +1052,8 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
 }
+
+
 
 .status-tag {
   padding: 4px 12px;
@@ -1696,8 +1662,9 @@ onUnmounted(() => {
 /* 响应式适配 */
 @media (max-width: 768px) {
   .plan-header {
-    padding: 0 16px;
+    padding: 0;
     height: 70px;
+    width: 100%;
   }
 
   .header-left {

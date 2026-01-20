@@ -25,11 +25,11 @@
             type="text" 
             class="input-field" 
             placeholder="请输入用户名"
-            v-model="form.username"
+            v-model="form.userid"
             maxlength="20"
-            @focus="clearError('username')"
+            @focus="clearError('userid')"
           >
-          <div v-if="errors.username" class="error-msg">{{ errors.username }}</div> -->
+          <div v-if="errors.userid" class="error-msg">{{ errors.userid }}</div> -->
 
           <div class="input-group">
           <input 
@@ -216,16 +216,7 @@ const clearError = (field) => {
 const validateForm = () => {
   const newErrors = {}
   
-  // // 用户名验证
-  // if (!form.username.trim()) {
-  //   newErrors.username = '用户名不能为空'
-  // } else if (form.username.length < 2) {
-  //   newErrors.username = '用户名至少2个字符'
-  // } else if (!/^[\u4e00-\u9fa5a-zA-Z0-9_]+$/.test(form.username)) {
-  //   newErrors.username = '用户名只能包含中文、英文、数字和下划线'
-  // }
-
-  //账号验证（邮箱）
+//账号验证（邮箱）
   const emailValue = form.email ? String(form.email).trim() : '';
   if (!emailValue) {
     newErrors.email = '账号不能为空';
@@ -322,7 +313,7 @@ const generateRandomCode = () => {
 
 // 注册处理 
 const handleRegister = async () => {
-  // 1. 表单验证
+  //  表单验证
   const validationErrors = validateForm()
 
   if (Object.keys(validationErrors).length > 0) {
@@ -330,9 +321,9 @@ const handleRegister = async () => {
     return
   }
 
-  // 2. 准备注册数据
+  // 准备注册数据
   const registerData = {
-    // username: form.username.trim(),
+    // userid: form.userid.trim(),
     email: form.email.trim(),
     password: form.password,
     registerTime: new Date().toISOString(),
@@ -340,15 +331,15 @@ const handleRegister = async () => {
   
   console.log('注册数据准备完成：', registerData)
   
-  // 3. 设置加载状态
+  //  设置加载状态
   loading.value = true
 
   
   
   try {
-    // 4. 调用注册接口
+    // 调用注册接口
     const response = await register(registerData);
-    // 5. 处理注册结果
+  
     if (response.success) {
       // 注册成功
       console.log('注册成功，用户ID：', response.userId)
@@ -375,7 +366,7 @@ const handleRegister = async () => {
     console.error('注册过程发生错误：', error)
     alert('注册失败，请检查网络或稍后重试')
   } finally {
-    // 7. 重置加载状态
+    //  重置加载状态
     loading.value = false
   }
 }

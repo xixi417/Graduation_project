@@ -11,8 +11,6 @@ ii在用户预设的学习时间点，通过APP推送或短信进行提醒，防
 1、走马灯图片来源，链接，从推荐中获取
 2、首页代办任务、学习提醒连接到计划中
 
-      主动打卡/标记完成（核心，必须要有）
-
       用户完成某个子任务或当日计划后，手动点击“完成”或“打卡”。
 
       记录什么：完成的任务内容、完成日期。
@@ -36,6 +34,46 @@ ii在用户预设的学习时间点，通过APP推送或短信进行提醒，防
 4.  学习时，使用你的【计时器】或学习后【手动打卡并输入时长】。  
 5.  系统基于这些打卡和时长数据，生成进度可视化、成就和报告，并在落后时提醒。  
 6.  用户根据报告和进度，调整后续计划（调整任务量或截止日期）。
+
+
+
+1有任务表和子任务表
+2任务表页面显示：任务1↓
+                子任务1
+                获取方法
+          [{
+            id: 1, // 任务唯一标识
+            planName: '3个月掌握Vue3', // 主任务名称
+            isExpanded: false, // 子任务展开状态（页面会重写，这里仅占位）
+            subtasks: [ // 子任务列表
+              { id: 101, planName: '学习Vue3组合式API', preId: 1 },
+              { id: 102, planName: '完成3个实战案例', preId: 1 },
+              { id: 103, planName: '复盘组件化知识点', preId: 1  }
+            ]
+          },
+          ...]
+3任务详细页面
+  子任务有一个计时器，以回话方式发送报文：
+子任务学习数据发送成功:
+study-plan-det
+{code:200,msg:'success',data:{...}}
+  code: 200
+  data:
+  mainTaskPreId: 1
+  planid: "plan_001"
+  sessions: Proxy{0:{...}}0 ：
+    {user_id: 0, plan_id: 'plan_001', sub_task_id: 101, main_task_preId: 1, session_status: 'completed', …}length：1
+  subTaskId: 101
+  todayDate: "2025-12-29"
+  todayTotalHours: 0.02
+  todayTotalMinutes: 1
+  updateTime: "2025-12-29T02:16:52.993Z"
+  userid:0
+  [[Prototype]]: Object
+  msg:"success
+  [[Prototype]]: Object
+
+并从后端获取今日累计学习时间，子任务总目标时间和已学习总时间，
 
 
 
@@ -69,7 +107,7 @@ C. 节奏进度（Pace Progress）
 用户表User
 CREATE TABLE users (
     id INT PRIMARY KEY AUTO_INCREMENT,
-    username VARCHAR(50) UNIQUE NOT NULL,      -- 用户名(account)
+    username VARCHAR(50) UNIQUE NOT NULL,      -- 用户名
     email VARCHAR(100) UNIQUE NOT NULL,        -- 邮箱
     password_hash VARCHAR(255) NOT NULL,       -- 加密密码
     avatar_url VARCHAR(500),                   -- 头像URL
@@ -87,8 +125,7 @@ CREATE TABLE study_plans (
     id INT PRIMARY KEY AUTO_INCREMENT,
     user_id INT NOT NULL,
     plan_name VARCHAR(100) NOT NULL,           -- 计划名称
-    notes TEXT,                                -- 用户笔记
-    is_expanded                                -- 是否有子任务
+    is_expanded BOOLEAN DEFAULT FALSE,                                -- 是否有子任务
     
     
     -- 时间设定（弹性）
@@ -106,14 +143,13 @@ CREATE TABLE study_plans (
     learning_days_per_week INT DEFAULT 5,      -- 每周计划学习几天
     min_daily_minutes INT DEFAULT 30,          -- 每日最少分钟
     max_daily_minutes INT DEFAULT 480,         -- 每日最多分钟（8小时）
-    
-    -- AI相关字段
-    ai_recommended_minutes INT,                -- AI推荐总时长
-    ai_recommended_daily_minutes INT,          -- AI推荐每日时长
-    ai_analysis_result JSON,                   -- AI分析结果（JSON存储）
-    
-    -- 状态管理
-    status ENUM('draft', 'active', 'paused', 'completed', 'abandoned') DEFAULT 'draft',
+    status ENUM(
+        'not_started',      -- 未开始
+        'in_progress',      -- 进行中
+        'completed',        -- 已完成
+        'paused',           -- 暂停中
+        'abandoned'         -- 已放弃
+    ) DEFAULT 'not_started',-- 状态管理
     completion_rate DECIMAL(5,2) DEFAULT 0.00, -- 完成率（0-100）
     
     -- 提醒设置
@@ -136,14 +172,10 @@ CREATE TABLE study_plans (
 CREATE TABLE sub_tasks (
     id INT PRIMARY KEY AUTO_INCREMENT,
     plan_id INT NOT NULL,                      -- 所属主计划
-    parent_task_id INT NULL,                   -- 父任务ID（支持多级嵌套）
     
     title VARCHAR(200) NOT NULL,               -- 子任务标题
-    notes TEXT,                                -- 用户笔记
     
     -- 时间设定
-    preferred_start_date DATE,                 -- 期望开始日期
-    preferred_end_date DATE,                   -- 期望完成日期
     actual_start_date DATE,                    -- 实际开始日期
     actual_end_date DATE,                      -- 实际完成日期
     
@@ -151,10 +183,9 @@ CREATE TABLE sub_tasks (
     estimated_minutes INT NOT NULL,            -- 预估所需分钟数
     actual_minutes INT DEFAULT 0,              -- 实际花费分钟数
 
-    -- AI相关字段
-    ai_recommended_minutes INT,                -- AI推荐总时长
-    ai_recommended_daily_minutes INT,          -- AI推荐每日时长
-    ai_analysis_result JSON,                   -- AI分析结果（JSON存储）
+    today_minutes INT DEFAULT 0,               -- 今日学习分钟数
+    cumulative_minutes INT DEFAULT 0,          -- 累计学习分钟数
+
     
     -- 依赖关系
     depends_on VARCHAR(500),                   -- 依赖的任务ID（逗号分隔）
@@ -165,19 +196,16 @@ CREATE TABLE sub_tasks (
         'not_started',      -- 未开始
         'in_progress',      -- 进行中
         'completed',        -- 已完成
-        'blocked',          -- 被阻塞
-        'postponed'         -- 已延期
+        'paused',           -- 暂停中
+        'abandoned'         -- 已放弃
     ) DEFAULT 'not_started',
     
-    completion_percentage INT DEFAULT 0,       -- 完成百分比（0-100）
-    is_milestone BOOLEAN DEFAULT FALSE,        -- 是否为里程碑任务
-    
-    
+    completion_percentage INT DEFAULT 0,       -- 完成百分比（0-100）(时间)
+
     -- 排序
     display_order INT DEFAULT 0,               -- 显示顺序
     
     -- AI相关
-    ai_generated BOOLEAN DEFAULT FALSE,        -- 是否AI生成
     ai_difficulty_rating INT,                  -- AI评估难度（1-5）
     ai_prerequisites JSON,                     -- AI推荐的前置知识
     
@@ -263,36 +291,34 @@ CREATE TABLE learning_materials (
 );
 
 -------------------------------------------------------------------------------------------------------
-AI分析结果记录表：
+AI分析结果智能推荐记录表：
 CREATE TABLE ai_analysis_logs (
     id INT PRIMARY KEY AUTO_INCREMENT,
     user_id INT NOT NULL,
-    plan_id INT,                               -- 可为空，通用分析时可能无计划
-    
-    analysis_type ENUM('plan_recommendation', 'progress_analysis', 'adjustment_suggestion', 'difficulty_assessment') NOT NULL,
-    
+
+
     -- 请求信息
     request_data JSON,                         -- 请求数据
     prompt_text TEXT,                          -- 实际发送的提示词
-    ai_model VARCHAR(50) DEFAULT 'gpt-3.5-turbo', -- 使用的AI模型
-    
+    category ENUM('basic', 'computer', 'language', 'exam', 'skill', 'hobby') NOT NULL,
+
+    -- 第二级：具体学科（存储 JSON 或字符串）
+    subject VARCHAR(100) NOT NULL,
+
+
     -- 响应信息
-    response_data JSON,                        -- AI原始响应
-    parsed_result JSON,                        -- 解析后的结果
-    used_tokens INT,                           -- 使用的token数
+    recommend_content JSON,                    -- AI原始响应
     
-    -- 状态
-    status ENUM('pending', 'success', 'failed') DEFAULT 'pending',
-    error_message TEXT,                        -- 错误信息
+
     
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    processed_at TIMESTAMP NULL,               -- 处理完成时间
+    created_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated-time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (plan_id) REFERENCES study_plans(id) ON DELETE SET NULL,
     
     INDEX idx_user_type (user_id, analysis_type),
-    INDEX idx_created_at (created_at)
+    INDEX idx_created_time (created_time)
 );
 -------------------------------------------------------------------------------------------------------
 通知提醒表：
@@ -329,3 +355,92 @@ CREATE TABLE notifications (
     INDEX idx_scheduled (scheduled_at, is_delivered),
     INDEX idx_created (created_at)
 );
+
+
+
+
+帮我生成学习计划页面的描述：基本功能：有一个列表显示所有任务，点击其中一行的向下箭头显示出其子任务，
+有编辑人物名，子任务名，新加人物名，子任务名，删除任务/子任务的功能
+
+
+
+
+
+
+主任务的编辑弹窗添加flexibleSettings: {
+    learningDaysPerWeek: null,
+    minDailyMinutes: null,
+    maxDailyMinutes: null
+  },
+
+
+子任务的编辑弹窗增加
+targetMinutes: null,
+
+子任务的添加弹窗添加
+targetMinutes: null,
+填完subplanName后有一行小字显示：ai推荐时长：x,（字段名：totalMinutes）
+ai推荐内容通过api的 getAiSubtaskRecommendations(params)获得
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+根据：用户首次点击「智能推荐」	实时调用 AI 生成结果 → 保存到推荐表（关联用户 ID、生成时间、推荐内容）→ 返回结果给用户
+用户非首次点击（且距上次生成≤24 小时 / 用户无关键行为变化）	直接从推荐表读取最近一次的结果 → 返回给用户
+用户非首次点击（距上次生成＞24 小时 / 用户有关键行为变化）	提示 “正在为你更新推荐内容...” → 实时调用 AI 重新生成 → 更新推荐表 → 返回新结果
+用户主动点击 “刷新推荐” 按钮	忽略时间 / 行为限制 → 实时重新生成 → 更新推荐表 → 返回新结果                                        逻辑规则，完善“智能推荐”板块，要求：形式为：灰色字体：res.summary；
+
+
+
+根据页面生成vite+vue3的content-details.vue页面，根据双端缓存content_detail_id获得id,isAI，普通data: [
+          {
+            id: "bas_1", // 任务唯一标识
+            title: '1个月掌握Vue3',
+            description: "从零开始学习Vue3框架，包含组合式API、响应式原理等核心概念",
+            url: "https:www.baidu.com",
+            imgurl: "https://example.com/images/vue3-cover.jpg",
+            category: "basic",
+            subject: "数学",
+            page_views: 1990,
+            updateTime: "2025-12-29 11:45:00",
+            difficulty:3.5,
+            recommendRat:"87%",
+            favorites: true
+          },
+          {},{}......]
+aidata：data.recommendContent:[{
+                id: "bas_90",
+                title: 'Python数据分析实战',
+                description: '使用Python进行数据处理、分析和可视化，掌握Pandas、NumPy等核心库',
+                url: 'https://example.com/images/python-data.jpg',
+                imgurl:'https://img0.baidu.com/it/u=2695853134,1241643150&fm=253&app=138&f=JPEG?w=828&h=800',
+                category: 'computer',
+                subject: 'python',
+                matchRate: 92,
+                estimatedTime: '45小时',
+                tags: ['Python', '数据分析', '实战'],
+                provider: '慕课网',
+                learningOutcomes: [
+                  '掌握数据分析核心技能',
+                  '能够独立完成数据项目',
+                  '具备数据思维'
+                ],
+                difficulty:3.5,
+                recommendRat:"87%",
+                page_views:190,
+                commendReason: "与您收藏的Python基础入门完美衔接,检测到您对数据分析有2次收藏记录,基于您对Python编程的偏好",
+                studyPlan: []
+              },{},{}......]

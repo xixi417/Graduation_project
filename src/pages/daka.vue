@@ -1,8 +1,7 @@
 <template>
   <div class="daka-container">
-    <!-- 顶部导航栏（PC/移动端适配） -->
+    <!-- 顶部导航栏 -->
     <header class="header">
-      <!-- 左侧：返回主页按钮 -->
       <div class="header-left">
         <div class="back-home" @click="handleBackHome">
           <svg viewBox="0 0 24 24" class="back-icon">
@@ -11,16 +10,12 @@
           <span class="back-text">返回主页</span>
         </div>
       </div>
-
-     
-      
     </header>
 
-    <!-- 主体内容区域 -->
+    <!-- 主体内容 -->
     <main class="main-content">
-      <!-- PC端：核心打卡区 + 统计数据区 横向布局 -->
+      <!-- PC端布局 -->
       <div class="pc-main-layout">
-        <!-- 核心打卡区 -->
         <div class="daka-card">
           <h2 class="daka-title">今日打卡</h2>
           <p class="daka-date" :style="{ borderBottom: '2px solid #409eff' }">{{ todayDateText }}</p>
@@ -31,7 +26,6 @@
           <p class="daka-tip">每日可打卡 1 次，打卡时间 00:00-23:59</p>
         </div>
 
-        <!-- 统计数据区（当月数据） -->
         <div class="stats-container">
           <div class="stats-card">
             <p class="stats-label">当月连续打卡</p>
@@ -48,15 +42,12 @@
         </div>
       </div>
 
-      <!-- 移动端：核心打卡区 + 统计数据区 垂直布局 -->
+      <!-- 移动端布局 -->
       <div class="mobile-main-layout">
-        <!-- 移动端顶部标题（补充） -->
         <div class="mobile-title">
-          
           <span class="mobile-daka-title">今日打卡</span>
         </div>
 
-        <!-- 核心打卡区 -->
         <div class="daka-card mobile-daka-card">
           <p class="daka-date mobile-daka-date" :style="{ borderBottom: '2px solid #409eff' }">{{ todayDateText }}</p>
           <p class="daka-status mobile-daka-status" :style="{ color: isDakaed ? '#67C23A' : '#f56c6c' }">
@@ -68,7 +59,6 @@
           <p class="daka-tip mobile-daka-tip">每日可打卡 1 次，打卡时间 00:00-23:59</p>
         </div>
 
-        <!-- 统计数据区（当月数据） -->
         <div class="stats-container mobile-stats-container">
           <div class="stats-card mobile-stats-card">
             <p class="stats-label">当月连续打卡</p>
@@ -83,59 +73,139 @@
             <p class="stats-value"><span>{{ punchRate }}%</span></p>
           </div>
         </div>
-      </div>
 
-      <!-- 历史打卡记录（仅保留日历，移除历史列表） -->
-      <div class="history-card">
-        <div class="history-header">
-          <h3 class="history-title">当月打卡日历</h3>
-          <!-- 已移除“查看全部”和历史列表 -->
-        </div>
-
-        <!-- 日历视图（恢复正常显示） -->
-        <div class="calendar">
-          <div class="calendar-week">
-            <span>日</span>
-            <span>一</span>
-            <span>二</span>
-            <span>三</span>
-            <span>四</span>
-            <span>五</span>
-            <span>六</span>
+        <!-- 自定义打卡日历（替代ElCalendar） -->
+        <div class="history-card">
+          <div class="history-header">
+            <h3 class="history-title">打卡日历</h3>
           </div>
-          <div class="calendar-days">
-            <span 
-              v-for="(day, index) in calendarDays" 
-              :key="index" 
-              class="calendar-day"
-              :class="{
-                disabled: day.disabled,
-                checked: day.checked || (day.date === todayDay && isDakaed),
-                today: day.date === todayDay
-              }"
-            >
-              {{ day.date }}
-            </span>
+
+          <!-- 自定义日历头部：年月选择器 + 切换按钮 -->
+          <div class="calendar-header">
+            <!-- 原生年月选择器 -->
+            <div class="month-picker">
+              <select v-model="selectedYear" @change="handleYearChange">
+                <option v-for="year in yearOptions" :value="year" :key="year">{{ year }}年</option>
+              </select>
+              <select v-model="selectedMonthNum" @change="handleMonthChange">
+                <option v-for="month in monthOptions" :value="month.value" :key="month.value">{{ month.label }}月</option>
+              </select>
+            </div>
+            
+            <!-- 自定义切换按钮 -->
+            <div class="calendar-buttons">
+              <button class="calendar-btn" @click="selectDate('prev-year')">上一年</button>
+              <button class="calendar-btn" @click="selectDate('prev-month')">上月</button>
+              <button class="calendar-btn" @click="selectDate('today')">今天</button>
+              <button class="calendar-btn" @click="selectDate('next-month')">下月</button>
+              <button class="calendar-btn" @click="selectDate('next-year')">下一年</button>
+            </div>
+          </div>
+
+          <!-- 自定义日历主体 -->
+          <div class="calendar-wrapper">
+            <!-- 星期头部 -->
+            <div class="calendar-week-header">
+              <div class="week-day" v-for="day in weekDays" :key="day">{{ day }}</div>
+            </div>
+            <!-- 日期单元格 -->
+            <div class="calendar-days">
+              <!-- 补全月初空白 -->
+              <div class="calendar-cell empty-cell" v-for="i in startWeekDay" :key="'empty-' + i"></div>
+              <!-- 当月日期 -->
+              <div 
+                class="calendar-cell" 
+                v-for="day in currentMonthDays" 
+                :key="day"
+                :class="{ 
+                  'checked-cell': isDateChecked(`${selectedYear}-${String(selectedMonthNum).padStart(2, '0')}-${String(day).padStart(2, '0')}`),
+                  'today-cell': isToday(day)
+                }"
+              >
+                <span class="day-number">{{ day }}</span>
+                <span v-if="isDateChecked(`${selectedYear}-${String(selectedMonthNum).padStart(2, '0')}-${String(day).padStart(2, '0')}`)" class="checked-mark">✓</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
     </main>
 
- 
+    <!-- 自定义消息提示框 -->
+    <div class="message-toast" v-if="showToast" :class="toastType">
+      {{ toastText }}
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
-
+import  StorageUtil  from '.././components/StorageUtil';
 const router = useRouter();
 
-// 核心常量定义
-const STORAGE_KEY = 'monthlyDakaData'; // 本地缓存键名
-const todayDate = ref(new Date()); // 今日日期对象
+// 模拟接口
+const getDaka = async (param) => {
+  return new Promise(resolve => {
+    setTimeout(() => {
+      const mockData = {
+        "2024-05-01": { isDakaed: true },
+        "2024-05-02": { isDakaed: true },
+        "2024-05-03": { isDakaed: false },
+        "2024-05-04": { isDakaed: true },
+        "2024-05-05": { isDakaed: true },
+      };
+      resolve(mockData);
+    }, 300);
+  });
+};
+// 核心数据
+const STORAGE_KEY = 'dailyDakaData';
+const todayDate = ref(new Date());
+const currentCalendarDate = ref(new Date());
 
-// 计算属性：今日日期文本
+// 自定义日历 - 年月选择器数据
+const yearOptions = ref([]);
+const monthOptions = ref([
+  { label: '01', value: 1 },
+  { label: '02', value: 2 },
+  { label: '03', value: 3 },
+  { label: '04', value: 4 },
+  { label: '05', value: 5 },
+  { label: '06', value: 6 },
+  { label: '07', value: 7 },
+  { label: '08', value: 8 },
+  { label: '09', value: 9 },
+  { label: '10', value: 10 },
+  { label: '11', value: 11 },
+  { label: '12', value: 12 },
+]);
+const selectedYear = ref(todayDate.value.getFullYear());
+const selectedMonthNum = ref(todayDate.value.getMonth() + 1);
+const weekDays = ref(['日', '一', '二', '三', '四', '五', '六']);
+
+// 生成年份选项（前后5年）
+const generateYearOptions = () => {
+  const currentYear = new Date().getFullYear();
+  const years = [];
+  for (let i = currentYear - 5; i <= currentYear + 5; i++) {
+    years.push(i);
+  }
+  yearOptions.value = years;
+};
+
+// 计算当月天数
+const currentMonthDays = computed(() => {
+  const days = new Date(selectedYear.value, selectedMonthNum.value, 0).getDate();
+  return Array.from({ length: days }, (_, i) => i + 1);
+});
+
+// 计算当月第一天是星期几（用于补全空白）
+const startWeekDay = computed(() => {
+  return new Date(selectedYear.value, selectedMonthNum.value - 1, 1).getDay();
+});
+
+// 今日日期文本（年月日+星期）
 const todayDateText = computed(() => {
   const year = todayDate.value.getFullYear();
   const month = todayDate.value.getMonth() + 1;
@@ -145,177 +215,275 @@ const todayDateText = computed(() => {
   return `${year} 年 ${month} 月 ${day} 日 ${weekDay}`;
 });
 
-// 计算属性：今日日期（数字）
-const todayDay = computed(() => todayDate.value.getDate());
-
-// 计算属性：当月已过天数（截止今日）
-const passedDaysOfMonth = computed(() => todayDate.value.getDate());
-
-// 计算属性：当月总天数
-const totalDaysOfMonth = computed(() => {
-  return new Date(
-    todayDate.value.getFullYear(),
-    todayDate.value.getMonth() + 1,
-    0
-  ).getDate();
+// 今日日期key（格式：YYYY-MM-DD）
+const todayDateKey = computed(() => {
+  const year = todayDate.value.getFullYear();
+  const month = String(todayDate.value.getMonth() + 1).padStart(2, '0');
+  const day = String(todayDate.value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 });
 
-// 初始化数据（优先从本地缓存读取，移除historyRecords）
-const initDakaData = () => {
-  const storedData = localStorage.getItem(STORAGE_KEY);
-  const currentMonthKey = `${todayDate.value.getFullYear()}-${String(todayDate.value.getMonth() + 1).padStart(2, '0')}`;
+// 当月维度计算
+const currentMonthKey = computed(() => {
+  const year = todayDate.value.getFullYear();
+  const month = String(todayDate.value.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+});
+const passedDaysOfMonth = computed(() => todayDate.value.getDate());
+const totalDaysOfMonth = computed(() => {
+  return new Date(todayDate.value.getFullYear(), todayDate.value.getMonth() + 1, 0).getDate();
+});
 
-  if (storedData) {
-    const parsedData = JSON.parse(storedData);
-    // 仅当缓存为当月数据时使用，跨月则重置
-    if (parsedData.monthKey === currentMonthKey) {
-      return {
-        isDakaed: parsedData.isDakaed,
-        continuousDays: parsedData.continuousDays,
-        totalTimes: parsedData.totalTimes,
-        punchRate: parsedData.punchRate,
-        checkedDays: new Set(parsedData.checkedDays) // 还原为Set类型
-      };
+const getAllDakaData = async (targetMonth = '') => {
+  let localData = StorageUtil.get(STORAGE_KEY, {});
+  const userId = StorageUtil.get('user_userid');
+  // console.log('用户ID:', localData);
+  // console.log('本地打卡数据:', localStorage.getItem('user_userid'));
+
+  if (Object.keys(localData).length === 0 || (targetMonth && !Object.keys(localData).some(key => key.startsWith(targetMonth)))) {
+    const param = {
+      userId,
+      month: targetMonth || currentMonthKey.value
+    };
+    const apiData = await getDaka(param);
+    localData = { ...localData, ...apiData };
+    StorageUtil.set(STORAGE_KEY, localData);
+  }
+  return localData;
+};
+
+// 2. 拉取指定月份的打卡数据
+const fetchMonthDakaData = async (month) => {
+  if (!month) return;
+  await getAllDakaData(month);
+  updateMonthStats();
+};
+
+// 3. 筛选当月所有打卡日期
+const getCurrentMonthCheckedDays = () => {
+  const allDakaData = StorageUtil.get(STORAGE_KEY, {});
+  const monthKey = currentMonthKey.value;
+  const checkedDays = [];
+  
+  Object.keys(allDakaData).forEach(dateKey => {
+    if (dateKey.startsWith(monthKey) && allDakaData[dateKey].isDakaed) {
+      const day = Number(dateKey.split('-')[2]);
+      checkedDays.push(day);
+    }
+  });
+  return new Set(checkedDays);
+};
+
+// 4. 计算当月连续打卡天数
+const calculateContinuousDays = () => {
+  const checkedDays = getCurrentMonthCheckedDays();
+  if (checkedDays.size === 0) return 0;
+
+  const checkedDaysArr = Array.from(checkedDays).sort((a, b) => a - b);
+  const todayDay = todayDate.value.getDate();
+  let continuousDays = 1;
+
+  if (checkedDays.has(todayDay)) {
+    let currentDay = todayDay;
+    for (let i = checkedDaysArr.indexOf(currentDay) - 1; i >= 0; i--) {
+      if (checkedDaysArr[i] === currentDay - 1) {
+        continuousDays++;
+        currentDay = checkedDaysArr[i];
+      } else {
+        break;
+      }
+    }
+  }else {
+    let lastCheckedDay = 0;
+    for (let i = checkedDaysArr.length - 1; i >= 0; i--) {
+      if (checkedDaysArr[i] < todayDay) {
+        lastCheckedDay = checkedDaysArr[i];
+        break;
+      }
+    }
+    if (lastCheckedDay === 0) return 0;
+    let currentDay = lastCheckedDay;
+    for (let i = checkedDaysArr.indexOf(lastCheckedDay) - 1; i >= 0; i--) {
+      if (checkedDaysArr[i] === currentDay - 1) {
+        continuousDays++;
+        currentDay = checkedDaysArr[i];
+      } else {
+        break;
+      }
     }
   }
-
-  // 无有效缓存时初始化（默认18、19、20日已打卡）
-  const defaultCheckedDays = new Set([18, 19, 20]);
-  const defaultTotalTimes = defaultCheckedDays.size;
-  const defaultPunchRate = Math.round((defaultTotalTimes / passedDaysOfMonth.value) * 100);
-  
-  return {
-    isDakaed: defaultCheckedDays.has(todayDay.value), // 今日是否已打卡
-    continuousDays: 3, // 默认当月连续3天
-    totalTimes: defaultTotalTimes,
-    punchRate: defaultPunchRate,
-    checkedDays: defaultCheckedDays
-  };
+  return continuousDays;
 };
 
-// 响应式数据（从缓存初始化，移除historyRecords）
-const initData = initDakaData();
-const isDakaed = ref(initData.isDakaed);
-const continuousDays = ref(initData.continuousDays);
-const totalTimes = ref(initData.totalTimes);
-const punchRate = ref(initData.punchRate);
-const checkedDays = ref(initData.checkedDays); // 当月已打卡日期集合
-const calendarDays = ref([]);
+// 5. 更新当月统计数据
+const updateMonthStats = () => {
+  const allDakaData = StorageUtil.get(STORAGE_KEY, {});
+  const isDakaedVal = allDakaData[todayDateKey.value]?.isDakaed || false;
+  const checkedDays = getCurrentMonthCheckedDays();
+  const totalTimesVal = checkedDays.size;
+  const punchRateVal = Math.round((totalTimesVal / passedDaysOfMonth.value) * 100) || 0;
+  const continuousDaysVal = calculateContinuousDays();
 
-// 生成当月日历（恢复正常渲染）
-const generateCalendar = () => {
-  const year = todayDate.value.getFullYear();
-  const month = todayDate.value.getMonth();
-  const firstDay = new Date(year, month, 1);
-  const lastDay = new Date(year, month + 1, 0);
-  const firstDayWeek = firstDay.getDay();
-  const lastDayDate = lastDay.getDate();
-
-  const days = [];
-
-  // 上月末尾补位
-  for (let i = firstDayWeek - 1; i >= 0; i--) {
-    const prevMonthDay = new Date(year, month, -i);
-    days.push({
-      date: prevMonthDay.getDate(),
-      disabled: true,
-      checked: false
-    });
-  }
-
-  // 当月日期（判断是否已打卡）
-  for (let i = 1; i <= lastDayDate; i++) {
-    days.push({
-      date: i,
-      disabled: false,
-      checked: checkedDays.value.has(i)
-    });
-  }
-
-  // 下月开头补位
-  const remainDays = 42 - days.length;
-  for (let i = 1; i <= remainDays; i++) {
-    days.push({
-      date: i,
-      disabled: true,
-      checked: false
-    });
-  }
-
-  calendarDays.value = days;
+  isDakaed.value = isDakaedVal;
+  continuousDays.value = continuousDaysVal;
+  totalTimes.value = totalTimesVal;
+  punchRate.value = punchRateVal;
 };
 
-// 保存数据到本地缓存（移除historyRecords相关）
+// 6. 初始化打卡数据
+const initDakaData = async () => {
+  await getAllDakaData();
+  updateMonthStats();
+};
+
+// 响应式数据
+const isDakaed = ref(false);
+const continuousDays = ref(0);
+const totalTimes = ref(0);
+const punchRate = ref(0);
+
+// 7. 判断指定日期是否打卡
+const isDateChecked = (dateStr) => {
+  const allDakaData = StorageUtil.get(STORAGE_KEY, {});
+  return allDakaData[dateStr]?.isDakaed || false;
+};
+
+// 8. 判断是否是今日（用于日历高亮）
+const isToday = (day) => {
+  const today = new Date();
+  return (
+    selectedYear.value === today.getFullYear() &&
+    selectedMonthNum.value === today.getMonth() + 1 &&
+    day === today.getDate()
+  );
+};
+
+// 9. 保存打卡数据到本地
 const saveDakaDataToStorage = () => {
-  const currentMonthKey = `${todayDate.value.getFullYear()}-${String(todayDate.value.getMonth() + 1).padStart(2, '0')}`;
-  const dakaData = {
-    monthKey: currentMonthKey, // 标记所属月份
+  const allDakaData = StorageUtil.get(STORAGE_KEY, {});
+  allDakaData[todayDateKey.value] = {
     isDakaed: isDakaed.value,
-    continuousDays: continuousDays.value,
-    totalTimes: totalTimes.value,
-    punchRate: punchRate.value,
-    checkedDays: Array.from(checkedDays.value) // Set对象转为数组存储
+    date: todayDateKey.value
   };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(dakaData));
+  StorageUtil.set(STORAGE_KEY, allDakaData);
 };
 
-// 返回主页事件
+// 10. 年份选择器变化事件
+const handleYearChange = () => {
+  currentCalendarDate.value = new Date(selectedYear.value, selectedMonthNum.value - 1, 1);
+  const newMonthKey = `${selectedYear.value}-${String(selectedMonthNum.value).padStart(2, '0')}`;
+  fetchMonthDakaData(newMonthKey);
+};
+
+// 11. 月份选择器变化事件
+const handleMonthChange = () => {
+  currentCalendarDate.value = new Date(selectedYear.value, selectedMonthNum.value - 1, 1);
+  const newMonthKey = `${selectedYear.value}-${String(selectedMonthNum.value).padStart(2, '0')}`;
+  fetchMonthDakaData(newMonthKey);
+};
+
+// 12. 日历切换事件
+const selectDate = async (type) => {
+  const date = new Date(selectedYear.value, selectedMonthNum.value - 1, 1);
+  switch (type) {
+    case 'prev-year':
+      date.setFullYear(date.getFullYear() - 1);
+      break;
+    case 'prev-month':
+      date.setMonth(date.getMonth() - 1);
+      break;
+    case 'today':
+      date.setTime(todayDate.value.getTime());
+      break;
+    case 'next-month':
+      date.setMonth(date.getMonth() + 1);
+      break;
+    case 'next-year':
+      date.setFullYear(date.getFullYear() + 1);
+      break;
+  }
+  currentCalendarDate.value = date;
+  selectedYear.value = date.getFullYear();
+  selectedMonthNum.value = date.getMonth() + 1;
+  const newMonthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+  await fetchMonthDakaData(newMonthKey);
+};
+
+// 13. 返回主页
 const handleBackHome = () => {
   router.push('/home').catch(err => {
-    if (!err.message.includes('NavigationDuplicated')) {
-      console.error('返回主页失败：', err);
-    }
+    if (!err.message.includes('NavigationDuplicated')) console.error('返回主页失败：', err);
   });
 };
 
-// 打卡按钮点击事件（移除historyRecords更新）
-const handleDaka = () => {
-  if (isDakaed.value) {
-    alert('今日已打卡，无需重复打卡～');
-    return;
-  }
+// 14. 自定义消息提示（替代ElMessage）
+const showToast = ref(false);
+const toastText = ref('');
+const toastType = ref('success'); // success/info/error
+let toastTimer = null;
 
-  // 更新打卡状态
-  alert('打卡成功！');
-  isDakaed.value = true;
-
-  // 更新当月统计数据
-  continuousDays.value += 1;
-  totalTimes.value += 1;
-  // 重新计算当月打卡率：(当月打卡次数 / 当月已过天数) * 100 四舍五入
-  punchRate.value = Math.round((totalTimes.value / passedDaysOfMonth.value) * 100);
-
-  // 更新已打卡日期集合
-  checkedDays.value.add(todayDay.value);
-
-  // 更新日历
-  generateCalendar();
-
-  // 保存到本地缓存
-  saveDakaDataToStorage();
+const showMessage = (text, type = 'success', duration = 2000) => {
+  toastText.value = text;
+  toastType.value = type;
+  showToast.value = true;
+  
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    showToast.value = false;
+  }, duration);
 };
 
-// 页面挂载时初始化（确保日历正常生成）
-onMounted(() => {
-  generateCalendar();
-  // 首次加载也保存一次缓存（确保数据持久化）
+// 15. 打卡事件
+const handleDaka = async () => {
+  if (isDakaed.value) {
+    showMessage('今日已打卡，无需重复打卡～', 'info');
+    return;
+  }
+ 
+  isDakaed.value = true;
   saveDakaDataToStorage();
+  updateMonthStats();
+  await getAllDakaData();
+  showMessage('打卡成功！', 'success');
+  
+  
+};
+
+// 监听日历日期变化
+watch(currentCalendarDate, (newVal) => {
+  selectedYear.value = newVal.getFullYear();
+  selectedMonthNum.value = newVal.getMonth() + 1;
+}, { immediate: true });
+
+// 监听月份变化
+watch(currentMonthKey, () => {
+  updateMonthStats();
+}, { immediate: true });
+
+// 初始化
+onMounted(async () => {
+  generateYearOptions();
+  await initDakaData();
+});
+
+// 清理定时器
+onUnmounted(() => {
+  if (toastTimer) clearTimeout(toastTimer);
 });
 </script>
 
 <style scoped>
-/* 全局样式重置与基础配置 */
+/* 基础样式 */
 .daka-container {
   width: 100%;
   min-height: 100vh;
   background-color: #f5f7fa;
-  font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
   box-sizing: border-box;
   padding: 0;
   margin: 0;
 }
 
-/* 顶部导航栏 */
 .header {
   width: 100%;
   height: 60px;
@@ -325,13 +493,10 @@ onMounted(() => {
   align-items: center;
   padding: 0 20px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-  box-sizing: border-box;
   position: sticky;
   top: 0;
   z-index: 100;
 }
-
-/* 左侧返回主页样式 */
 .header-left .back-home {
   display: flex;
   align-items: center;
@@ -340,94 +505,18 @@ onMounted(() => {
   color: #333;
   transition: color 0.3s;
 }
-
 .header-left .back-home:hover {
   color: #409eff;
 }
-
 .back-icon {
   width: 18px;
   height: 18px;
 }
-
 .back-text {
   font-size: 16px;
   font-weight: 500;
 }
 
-.header-right .user-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  position: relative;
-}
-
-.avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background-color: #e5e9f2;
-}
-
-.nickname {
-  font-size: 14px;
-  color: #333;
-}
-
-.dropdown-icon {
-  width: 16px;
-  height: 16px;
-  color: #666;
-  transition: transform 0.3s;
-}
-
-.user-info:hover .dropdown-icon {
-  transform: rotate(180deg);
-}
-
-.dropdown-menu {
-  position: absolute;
-  top: 50px;
-  right: 0;
-  width: 120px;
-  background-color: #fff;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  display: none;
-  flex-direction: column;
-  z-index: 99;
-}
-
-.user-info:hover .dropdown-menu {
-  display: flex;
-}
-
-.menu-item {
-  padding: 10px 15px;
-  font-size: 14px;
-  color: #333;
-  cursor: pointer;
-  transition: background-color 0.3s;
-}
-
-.menu-item:hover {
-  background-color: #f0f7ff;
-  color: #409eff;
-}
-
-.mobile-exit {
-  display: none;
-  cursor: pointer;
-}
-
-.exit-icon {
-  width: 24px;
-  height: 24px;
-  color: #666;
-}
-
-/* 主体内容 */
 .main-content {
   width: 100%;
   max-width: 1200px;
@@ -436,18 +525,16 @@ onMounted(() => {
   box-sizing: border-box;
 }
 
-/* PC端主布局（核心打卡区+统计区横向排列） */
+/* PC端布局 */
 .pc-main-layout {
   display: flex;
   gap: 20px;
   margin-bottom: 30px;
 }
-
 .mobile-main-layout {
   display: none;
 }
 
-/* 核心打卡区 */
 .daka-card {
   flex: 1;
   background-color: #fff;
@@ -460,27 +547,23 @@ onMounted(() => {
   justify-content: center;
   text-align: center;
 }
-
 .daka-title {
   font-size: 20px;
   color: #333;
   margin: 0 0 20px 0;
   font-weight: 600;
 }
-
 .daka-date {
   font-size: 14px;
   color: #666;
   padding-bottom: 10px;
   margin: 0 0 20px 0;
 }
-
 .daka-status {
   font-size: 18px;
   margin: 0 0 30px 0;
   font-weight: 500;
 }
-
 .daka-btn {
   width: 200px;
   height: 50px;
@@ -490,35 +573,27 @@ onMounted(() => {
   color: #fff;
   font-size: 16px;
   cursor: pointer;
-  transition: transform 0.3s, box-shadow 0.3s, background 0.3s;
+  transition: transform 0.3s;
 }
-
 .daka-btn:disabled {
   background: #c0c4cc;
   cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
 }
-
 .daka-btn:hover:not(:disabled) {
   transform: scale(1.05);
-  box-shadow: 0 6px 15px rgba(64, 158, 255, 0.3);
 }
-
 .daka-tip {
   font-size: 12px;
   color: #999;
   margin: 20px 0 0 0;
 }
 
-/* 统计数据区 */
 .stats-container {
   flex: 1;
   display: flex;
   gap: 15px;
   align-items: center;
 }
-
 .stats-card {
   flex: 1;
   background-color: #f0f7ff;
@@ -530,19 +605,16 @@ onMounted(() => {
   justify-content: center;
   text-align: center;
 }
-
 .stats-label {
   font-size: 14px;
   color: #666;
   margin: 0 0 10px 0;
 }
-
 .stats-value {
   font-size: 14px;
   color: #333;
   margin: 0;
 }
-
 .stats-value span {
   font-size: 24px;
   color: #409eff;
@@ -550,7 +622,7 @@ onMounted(() => {
   margin-right: 4px;
 }
 
-/* 历史打卡记录（仅保留日历） */
+/* 日历样式 */
 .history-card {
   width: 100%;
   background-color: #fff;
@@ -560,14 +632,12 @@ onMounted(() => {
   box-sizing: border-box;
   margin-top: 30px;
 }
-
 .history-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
 }
-
 .history-title {
   font-size: 16px;
   color: #333;
@@ -575,112 +645,126 @@ onMounted(() => {
   font-weight: 600;
 }
 
-/* 日历视图（确保正常显示） */
-.calendar {
+.calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 15px;
+}
+.month-picker {
+  display: flex;
+  gap: 8px;
+}
+.month-picker select {
+  padding: 6px 10px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  font-size: 14px;
+  color: #666;
+  cursor: pointer;
+}
+.calendar-buttons {
+  display: flex;
+  gap: 5px;
+}
+.calendar-btn {
+  padding: 6px 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  background-color: #fff;
+  font-size: 12px;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.calendar-btn:hover {
+  background-color: #f0f7ff;
+  color: #409eff;
+  border-color: #409eff;
+}
+
+.calendar-wrapper {
   width: 100%;
 }
-
-.calendar-week {
+.calendar-week-header {
   display: flex;
-  justify-content: space-between;
-  margin-bottom: 10px;
+  background-color: #f5f7fa;
+  border-radius: 4px 4px 0 0;
 }
-
-.calendar-week span {
-  width: calc(100% / 7);
+.week-day {
+  flex: 1;
   text-align: center;
+  padding: 10px 0;
   font-size: 14px;
   color: #666;
   font-weight: 500;
 }
-
 .calendar-days {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  border: 1px solid #e4e7ed;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
 }
-
-.calendar-day {
-  width: calc((100% - 30px) / 7);
-  height: 40px;
+.calendar-cell {
+  width: calc(100% / 7);
+  height: 60px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
-  color: #333;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.3s;
-}
-
-.calendar-day.disabled {
-  color: #c0c4cc;
-  cursor: not-allowed;
-}
-
-.calendar-day.checked {
-  background-color: #409eff;
-  color: #fff;
   position: relative;
+  box-sizing: border-box;
+  border-right: 1px solid #e4e7ed;
+  border-bottom: 1px solid #e4e7ed;
 }
-
-.calendar-day.checked::after {
-  content: "✓";
+.calendar-cell:nth-child(7n) {
+  border-right: none;
+}
+.calendar-cell:last-child {
+  border-bottom: none;
+}
+.empty-cell {
+  background-color: #fafafa;
+}
+.checked-cell {
+  background-color: #e6f7ff;
+  color: #1890ff;
+}
+.today-cell {
+  font-weight: bold;
+  color: #409eff;
+}
+.day-number {
+  font-size: 14px;
+}
+.checked-mark {
   position: absolute;
   bottom: 2px;
   right: 2px;
   font-size: 10px;
+  color: #409eff;
+  font-weight: bold;
 }
 
-.calendar-day.today {
-  border: 2px solid #f56c6c;
-  font-weight: 600;
-}
-
-.calendar-day:hover:not(.disabled):not(.checked):not(.today) {
-  background-color: #f0f7ff;
-}
-
-
-
-/* 移动端适配（屏幕宽度 ≤ 768px） */
+/* 移动端适配 */
 @media (max-width: 768px) {
-  /* 隐藏PC端元素，显示移动端元素 */
   .pc-main-layout {
-    
     display: none;
   }
-  .daka-container {
-    width: 100vw; /* 使用100vw */
-    padding: 0;
-    padding-bottom: 60px;
-    /* 修正可能的滚动条偏移 */
-    margin-left: calc(50% - 50vw); 
-    left: 0;
-    position: relative;
-  }
-  img, video, iframe {
-    max-width: 120vw;
-    height: auto;
-  }
-
   .mobile-main-layout {
     display: flex;
     flex-direction: column;
     gap: 20px;
     margin-bottom: 30px;
   }
-
-  /* 顶部导航调整 */
-  .header-right .user-info {
-    display: none;
+  .daka-container {
+    width: 100vw;
+    padding: 0;
+    padding-bottom: 60px;
+    margin-left: calc(50% - 50vw);
+    left: 0;
+    position: relative;
   }
-
-  .mobile-exit {
-    display: block;
-  }
-
-  /* 移动端标题 */
   .mobile-title {
     display: flex;
     align-items: center;
@@ -688,70 +772,78 @@ onMounted(() => {
     gap: 10px;
     margin-bottom: 15px;
   }
-
-  .mobile-nickname {
-    font-size: 14px;
-    color: #333;
-  }
-
   .mobile-daka-title {
     font-size: 18px;
     font-weight: 600;
     color: #333;
   }
-
-  /* 移动端核心打卡区 */
   .mobile-daka-card {
     padding: 20px 15px;
   }
-
   .mobile-daka-date {
     font-size: 13px;
   }
-
   .mobile-daka-status {
     font-size: 16px;
   }
-
   .mobile-daka-btn {
     width: 100%;
   }
-
   .mobile-daka-tip {
     font-size: 11px;
   }
-
-  /* 移动端统计区 */
   .mobile-stats-container {
     gap: 10px;
   }
-
   .mobile-stats-card {
     padding: 15px 10px;
   }
-
   .stats-label {
     font-size: 12px;
   }
-
   .stats-value span {
     font-size: 20px;
   }
-
-  /* 日历适配移动端 */
   .history-card {
     padding: 20px 15px;
     margin-top: 20px;
   }
-
-  .calendar-day {
-    height: 30px;
-    font-size: 12px;
+  .calendar-header {
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-start;
   }
-
-  /* 显示底部版权 */
-  .footer {
-    display: block;
+  .calendar-cell {
+    height: 40px;
   }
+  .checked-mark {
+    bottom: 1px;
+    right: 1px;
+    font-size: 9px;
+  }
+}
+
+/* 自定义消息提示样式 */
+.message-toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 20px;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 14px;
+  z-index: 9999;
+  opacity: 0.9;
+  transition: all 0.3s;
+}
+.message-toast.success {
+  background-color: #67C23A;
+}
+.message-toast.info {
+  background-color: #909399;
+}
+.message-toast.error {
+  background-color: #F56C6C;
 }
 </style>

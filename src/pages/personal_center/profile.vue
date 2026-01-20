@@ -2,14 +2,21 @@
   <div class="page-container">
     <!-- 1. 用户信息顶部区域 -->
     <div class="user-info-wrapper">
+
       <!-- 头像+基本信息 -->
       <div class="user-base-info">
         <div class="avatar-wrapper" @click="handleAvatarEdit">
-          <img :src="userInfo.avatar" alt="用户头像" class="user-avatar" />
+          <!-- 头像展示：云存储URL / 默认头像 -->
+          <img :src="userInfo.avatar || defaultAvatar" alt="用户头像" class="user-avatar" />
           <div class="avatar-edit-mask">
             <span class="edit-icon">✏️</span>
           </div>
+
+          <!-- H5端隐藏的文件选择框（小程序端编译时会被忽略） -->
+          <input v-if="isH5Env" ref="avatarInput" type="file" accept="image/jpeg,image/png,image/gif"
+            style="display: none" @change="handleH5FileSelect" />
         </div>
+
         <div class="user-text-info">
           <div class="user-name-row">
             <span class="user-nickname">{{ userInfo.nickname }}</span>
@@ -22,71 +29,32 @@
       </div>
 
       <!-- 账号管理入口 -->
-      <div class="username-manage" @click="handleusernameManage">
+
+      <div class="userid-manage" @click="handleuseridManage">
         <span class="manage-text">账号管理</span>
         <span class="arrow-icon">→</span>
       </div>
     </div>
 
-    <!-- 2. 学习目标区域 -->
+    <!-- 2. 我的收藏 -->
     <div class="study-goals-wrapper">
-      <div class="goals-title">我的学习目标</div>
+      <div class="goals-title">我的收藏</div>
 
-      <!-- 进行中目标 -->
+      <!-- 收藏 -->
       <div class="goal-section">
-        <div class="section-title">进行中</div>
-        <div 
-          class="goal-item" 
-          v-for="goal in ongoingGoals" 
-          :key="goal.id"
-          @click="handleGoalClick(goal)"
-        >
+        <div class="section-title">收藏</div>
+        <div class="goal-item" v-for="goal in favoriteList" :key="goal.id">
           <span class="goal-title">{{ goal.title }}</span>
-          <span class="goal-status ongoing">进行中</span>
         </div>
-        <div class="empty-tip" v-if="ongoingGoals.length === 0">暂无进行中的学习目标</div>
+        <div class="empty-tip" v-if="favoriteList.length === 0">暂无收藏</div>
       </div>
 
-      <!-- 已暂停目标 -->
-      <div class="goal-section">
-        <div class="section-title">已暂停</div>
-        <div 
-          class="goal-item" 
-          v-for="goal in pausedGoals" 
-          :key="goal.id"
-          @click="handleGoalClick(goal)"
-        >
-          <span class="goal-title">{{ goal.title }}</span>
-          <span class="goal-status paused">已暂停</span>
-        </div>
-        <div class="empty-tip" v-if="pausedGoals.length === 0">暂无已暂停的学习目标</div>
-      </div>
-
-      <!-- 已完成目标 -->
-      <div class="goal-section">
-        <div class="section-title">已完成</div>
-        <div 
-          class="goal-item" 
-          v-for="goal in completedGoals" 
-          :key="goal.id"
-          @click="handleGoalClick(goal)"
-        >
-          <span class="goal-title">{{ goal.title }}</span>
-          <span class="goal-status completed">已完成</span>
-        </div>
-        <div class="empty-tip" v-if="completedGoals.length === 0">暂无已完成的学习目标</div>
-      </div>
     </div>
 
     <!-- 3. 底部常驻Tab栏（小程序样式，固定底部） -->
     <div class="tab-bar">
-      <div 
-        class="tab-item" 
-        v-for="item in tabList" 
-        :key="item.name"
-        :class="{ active: activeTab === item.name }"
-        @click="handleTabClick(item)"
-      >
+      <div class="tab-item" v-for="item in tabList" :key="item.name" :class="{ active: activeTab === item.name }"
+        @click="handleTabClick(item)">
         <component :is="item.icon" size="24" />
         <div class="tab-name">{{ item.name }}</div>
       </div>
@@ -96,22 +64,10 @@
     <div class="modal-mask" v-if="isModalOpen" @click="closeModal">
       <div class="modal-content" @click.stop>
         <div class="modal-title">{{ modalType === 'nickname' ? '修改昵称' : '修改个性签名' }}</div>
-        <input 
-          v-if="modalType === 'nickname'"
-          type="text" 
-          v-model="tempNickname" 
-          class="modal-input"
-          placeholder="请输入新昵称"
-          maxlength="16"
-        />
-        <textarea 
-          v-if="modalType === 'signature'"
-          v-model="tempSignature" 
-          class="modal-textarea"
-          placeholder="请输入个性签名"
-          maxlength="50"
-          rows="3"
-        ></textarea>
+        <input v-if="modalType === 'nickname'" type="text" v-model="tempNickname" class="modal-input"
+          placeholder="请输入新昵称" maxlength="16" />
+        <textarea v-if="modalType === 'signature'" v-model="tempSignature" class="modal-textarea" placeholder="请输入个性签名"
+          maxlength="50" rows="3"></textarea>
         <div class="modal-btn-group">
           <button class="modal-cancel" @click="closeModal">取消</button>
           <button class="modal-confirm" @click="confirmEdit">确认</button>
@@ -124,35 +80,78 @@
 <script setup>
 import { ref, reactive, onMounted, onBeforeMount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-// 引入Element Plus图标
 import { House, Flag, Star, Timer, User } from '@element-plus/icons-vue'
-import { useTheme } from '../global/useTheme'          
+import { getUserInfo,getFavoriteList,
+  uploadAvatarH5
+} from './profile'
+import { StorageUtil } from '../../components/StorageUtil'
+
+//路由相关
 const router = useRouter()
 const route = useRoute()
+const avatarInput = ref(null); 
+const isH5Env = ref(false)
 
-const { isDarkMode } = useTheme()
+// 学习目标数据
+const favoriteList = ref([])
+
+
+// 弹窗相关
+const isModalOpen = ref(false)
+const modalType = ref('')
+const tempNickname = ref('')
+const tempSignature = ref('')
+
 
 // 定义存储KEY（统一标识）
 const USER_INFO_STORAGE_KEY = 'study_app_user_info'
 
+const getProgressPath = () => {
+  const userId = StorageUtil.get('user_userid')
+   console.log(userId)
+  return userId == "admin"
+    ? '/content_recommend/content-admin/content-admin' 
+    : '/content_recommend/content-recommend/content-recommend'
+   
+}
+
+// 底部Tab列表
+const tabList = ref([
+  { name: '首页', icon: House, path: '/Home' },
+  { name: '计划', icon: Flag, path: '/study_plan/study-plan/study-plan' },
+  { name: '推荐', icon: Star, path: getProgressPath() },
+  { name: '进度', icon: Timer, path: "" },
+  { name: '个人', icon: User, path: '/personal_center/profile' }
+])
+
+// 激活的底部Tab 
+const activeTab = ref('个人')
+
+
 // 初始化用户信息（优先读取本地存储，无则用默认值）
 const initUserInfo = () => {
-  // 区分网页端/小程序端的存储读取方式
   let storedInfo = null
   try {
     // 微信小程序环境
-    if (typeof wx !== 'undefined' && wx.setStorageSync) {
+    if (typeof wx !== 'undefined' && wx.getStorageSync) {
       storedInfo = wx.getStorageSync(USER_INFO_STORAGE_KEY)
-    } 
+    }
     // 网页端环境
     else {
-      storedInfo = localStorage.getItem(USER_INFO_STORAGE_KEY)
-      storedInfo = storedInfo ? JSON.parse(storedInfo) : null
+      const storedStr = localStorage.getItem(USER_INFO_STORAGE_KEY)
+      storedInfo = storedStr ? JSON.parse(storedStr) : null
+    }
+    if (storedInfo && typeof storedInfo === 'object') {
+      console.log('有效存储数据:', storedInfo)
+    } else {
+      console.warn('存储数据格式无效，将使用默认值')
+      storedInfo = null
     }
   } catch (e) {
     console.error('读取用户信息失败:', e)
     storedInfo = null
   }
+  
 
   // 默认值
   const defaultInfo = {
@@ -161,8 +160,9 @@ const initUserInfo = () => {
     signature: '每天进步一点点，坚持就是胜利～'
   }
 
-  // 合并：有存储数据则覆盖默认值，无则用默认值
-  return { ...defaultInfo, ...storedInfo }
+  const result = { ...defaultInfo, ...storedInfo }
+  console.log('初始用户信息:', result)
+  return result
 }
 
 // 响应式用户信息
@@ -171,45 +171,27 @@ const userInfo = reactive(initUserInfo())
 // 保存用户信息到本地存储
 const saveUserInfoToStorage = () => {
   try {
-    // 微信小程序
-    if (typeof wx !== 'undefined' && wx.setStorageSync) {
-      wx.setStorageSync(USER_INFO_STORAGE_KEY, {
-        avatar: userInfo.avatar,
-        nickname: userInfo.nickname,
-        signature: userInfo.signature
-      })
-    } 
-    // 网页端
-    else {
-      localStorage.setItem(
-        USER_INFO_STORAGE_KEY,
-        JSON.stringify({
-          avatar: userInfo.avatar,
-          nickname: userInfo.nickname,
-          signature: userInfo.signature
-        })
-      )
+    // 准备要存储的数据
+    const dataToStore = {
+      avatar: userInfo.avatar,
+      nickname: userInfo.nickname,
+      signature: userInfo.signature
     }
+    console.log(" dataToStore",dataToStore.avatar)
+
+    console.log('准备存储的数据:', dataToStore)
+
+    StorageUtil.set(USER_INFO_STORAGE_KEY, dataToStore)
+    console.log('已保存用户信息到本地存储')
   } catch (e) {
     console.error('保存用户信息失败:', e)
   }
 }
 
-// 底部Tab列表（与首页保持一致）
-const tabList = ref([
-  { name: '首页', icon: House, path: '/Home' },
-  { name: '计划', icon: Flag, path: '/study_plan/study-plan' },
-  { name: '推荐', icon: Star, path: '/content-recommend' },
-  { name: '进度', icon: Timer, path: '/progress-record' },
-  { name: '个人', icon: User, path: '/profile' }
-])
 
-// 激活的底部Tab（默认选中"个人"）
-const activeTab = ref('个人')
 
 // 页面挂载前初始化激活的Tab
 onBeforeMount(() => {
-  // 根据当前路由匹配激活的Tab
   const currentPath = route.path
   const matchedTab = tabList.value.find(item => item.path === currentPath)
   if (matchedTab) {
@@ -217,37 +199,83 @@ onBeforeMount(() => {
   }
 })
 
-// 页面挂载时执行
-onMounted(() => {
-  console.log('当前用户信息:', userInfo)
-})
 
-// 学习目标数据（模拟）
-const ongoingGoals = ref([
-  { id: 1, title: 'Python零基础入门', status: 'ongoing' },
-  { id: 2, title: '每天背50个英语单词', status: 'ongoing' }
-])
-const pausedGoals = ref([
-  { id: 3, title: '数据分析实战课程', status: 'paused' }
-])
-const completedGoals = ref([
-  { id: 4, title: 'HTML/CSS基础学习', status: 'completed' },
-  { id: 5, title: 'JavaScript入门到精通', status: 'completed' }
-])
 
-// 弹窗相关
-const isModalOpen = ref(false)
-const modalType = ref('') // nickname / signature
-const tempNickname = ref('')
-const tempSignature = ref('')
 
-// 编辑头像（实际项目中可对接文件上传）
+
+//头像
 const handleAvatarEdit = () => {
-  alert('请选择新头像（实际项目中对接文件上传功能）')
-  // 示例：上传后更新头像并保存
-  // userInfo.avatar = '新头像URL'
-  // saveUserInfoToStorage()
+  if (isH5Env.value) {
+    // H5端：触发本地文件选择
+    avatarInput.value?.click();
+  } else {
+    // 小程序端：调用相册/相机
+    handleMiniProgramImageSelect();
+  }
+};
+//网页端
+const handleH5FileSelect = async (e) => {
+  const file = e.target.files?.[0]
+  if (!file) return
+
+  // 1. 文件格式/大小校验
+  const validateRes = validateFile(file)
+  if (!validateRes.valid) {
+    alert(validateRes.msg)
+    e.target.value = '' // 清空选择，避免重复选同一文件无触发
+    return
+  }
+  console.log(file);
+
+  try {
+    // 2. 构建FormData（兼容文件+用户ID）
+    const formData = new FormData()
+    formData.append('avatar', file) // 头像文件
+    formData.append('userId', StorageUtil.get('user_userid'))
+
+    // 3. 调用H5端上传接口
+    const uploadRes = await uploadAvatarH5(formData)
+    if (uploadRes.code === 200 && uploadRes.data?.avatarUrl) {
+      // 4. 更新本地用户信息
+      userInfo.avatar = uploadRes.data.avatarUrl
+      // 5. 保存到本地缓存
+      saveUserInfoToStorage()
+      console.log("本地新存储图片成功",userInfo.avatar)
+      alert('头像上传成功！')
+    } else {
+      alert(`上传失败：${uploadRes.message || '服务器错误'}`)
+    }
+  } catch (err) {
+    console.error('H5头像上传失败:', err)
+    alert('头像上传失败，请检查网络后重试')
+  } finally {
+    e.target.value = '' // 清空文件选择框，避免重复上传
+  }
+};
+
+//网页端校验
+const validateFile = (file) => {
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
+  const maxSize = 2 * 1024 * 1024; // 2MB
+
+  if (!allowedTypes.includes(file.type)) {
+    return { valid: false, msg: '仅支持JPG/PNG/GIF格式的头像' };
+  }
+  if (file.size > maxSize) {
+    return { valid: false, msg: '头像大小不能超过2MB' };
+  }
+  return { valid: true, msg: '' };
+};
+//小程序端
+const handleMiniProgramImageSelect = () => {
+
+
 }
+
+
+
+
+
 
 // 编辑昵称
 const handleNicknameEdit = () => {
@@ -264,14 +292,12 @@ const handleSignatureEdit = () => {
 }
 
 // 账号管理
-const handleusernameManage = () => {
+const handleuseridManage = () => {
   router.push('/personal_center/accountMan')
 }
 
-// 学习目标点击
-const handleGoalClick = (goal) => {
-  router.push(`/study_plan/detail/${goal.id}`)
-}
+
+
 
 // 底部Tab点击跳转+激活状态
 const handleTabClick = (item) => {
@@ -287,7 +313,7 @@ const closeModal = () => {
 }
 
 // 确认编辑
-const confirmEdit = () => {
+const confirmEdit = async () => {
   if (modalType.value === 'nickname') {
     if (!tempNickname.value.trim()) {
       alert('昵称不能为空')
@@ -297,17 +323,100 @@ const confirmEdit = () => {
   } else if (modalType.value === 'signature') {
     userInfo.signature = tempSignature.value.trim()
   }
-  // 编辑后立即保存到本地存储
-  saveUserInfoToStorage()
-  isModalOpen.value = false
-  alert('修改成功！')
+  try {
+    const response = await sendNewInfo({
+      username: userInfo.nickname,
+      bio: userInfo.signature,
+      avatarUrl: userInfo.avatar
+    })
+    if (response.code === 200) {
+      saveUserInfoToStorage()  // 保存到本地存储
+      isModalOpen.value = false
+      alert('修改成功！')
+    } else {
+      alert(`修改失败：${response.message || '未知错误'}`)
+    }
+  } catch (error) {
+    console.error('发送用户信息失败：', error)
+    alert('网络错误，修改失败')
+  }
+
 }
+
+
+const fetchTaskList = async () => {
+  const userId = StorageUtil.get('user_userid')
+  if (!userId) {
+    console.warn('【获取任务列表】用户ID为空，无法请求接口');
+    favoriteList.value = [];
+     
+    return;
+  }
+  const param = {
+    userId
+  }
+
+  try {
+    // 1. 串行调用进行中接口
+    const favoriteRes = await getFavoriteList({ param });
+    favoriteList.value = (favoriteRes.code === 200 && Array.isArray(favoriteRes.data)) ? favoriteRes.data : [];
+    console.log("value", favoriteList.value);
+    
+    console.log('【任务列表获取完成】已更新');
+  } catch (err) {
+    console.error('【获取任务列表】整体请求失败', err);
+    favoriteList.value = [];
+     
+  }
+};
+
+
+
+// 页面挂载时执行
+onMounted(async () => {
+  console.log('初始用户信息:', userInfo)
+
+  // 获取并同步用户信息
+  const userId = StorageUtil.get('user_userid')
+  if (userId) {
+    console.log('找到用户ID:', userId)
+    const res = await getUserInfo(userId)
+    console.log('从接口获取的用户信息:', res)
+
+    if (res && res.code === 200 && res.data) {
+      const detailedInfo = res.data
+      //赋值
+      userInfo.avatar = detailedInfo.avatarUrl || userInfo.avatar
+      userInfo.nickname = detailedInfo.username || userInfo.nickname
+      userInfo.signature = detailedInfo.bio || userInfo.signature
+
+      // 保存更新后的数据到本地存储
+      saveUserInfoToStorage()
+      console.log('已更新用户信息:', userInfo)
+    }
+  } else {
+    console.log('未找到用户ID，使用当前存储信息')
+  }
+
+  //判断运行环境
+  if (typeof uni !== 'undefined') {
+    const systemInfo = uni.getSystemInfoSync();
+    isH5Env.value = systemInfo.platform === 'h5';
+  } else {
+    isH5Env.value = true;
+  }
+  await fetchTaskList();
+
+
+})
+
+
+
+
+
+
 </script>
-
 <style scoped>
-/* 全局容器：预留底部Tab高度，避免内容被遮挡 */
-
-
 /* 1. 用户信息区域 */
 .user-info-wrapper {
   background-color: #fff;
@@ -344,7 +453,7 @@ const confirmEdit = () => {
   left: 0;
   width: 100%;
   height: 30px;
-  background-color: rgba(0,0,0,0.5);
+  background-color: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -399,7 +508,7 @@ const confirmEdit = () => {
   color: #409EFF;
 }
 
-.username-manage {
+.userid-manage {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -418,7 +527,7 @@ const confirmEdit = () => {
   color: #999;
 }
 
-.username-manage:hover {
+.userid-manage:hover {
   color: #409EFF;
 }
 
@@ -428,7 +537,7 @@ const confirmEdit = () => {
   margin: 0 15px;
   border-radius: 12px;
   padding: 15px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   margin-bottom: 20px;
 }
 
@@ -519,11 +628,11 @@ const confirmEdit = () => {
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: rgba(0,0,0,0.5);
+  background-color: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000; 
+  z-index: 1000;
 }
 
 .modal-content {
@@ -542,7 +651,8 @@ const confirmEdit = () => {
   text-align: center;
 }
 
-.modal-input, .modal-textarea {
+.modal-input,
+.modal-textarea {
   width: 100%;
   box-sizing: border-box;
   padding: 10px;
@@ -562,7 +672,8 @@ const confirmEdit = () => {
   gap: 10px;
 }
 
-.modal-cancel, .modal-confirm {
+.modal-cancel,
+.modal-confirm {
   flex: 1;
   padding: 10px;
   border: none;
@@ -588,6 +699,4 @@ const confirmEdit = () => {
 .modal-cancel:hover {
   background-color: #E0E0E0;
 }
-
-
 </style>

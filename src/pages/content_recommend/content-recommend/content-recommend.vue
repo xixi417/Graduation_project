@@ -1,0 +1,1000 @@
+<template>
+  <div class="page-container">
+    <!-- 原有顶部导航栏、搜索栏等结构 -->
+    <div class="top-nav">
+      <div class="nav-buttons">
+        <button v-for="navItem in topNavList" :key="navItem.label"
+          :class="['top-nav-btn', activeTopNav === navItem.label ? 'active' : '']"
+          @click="navItem.label === '智能推荐' ? aiRecommend() : handleTopNavClick(navItem.label)">
+          {{ navItem.label }}
+        </button>
+
+        <div class="search-wrap pc-search">
+          <div class="search-input-box">
+            <el-input v-model="searchKeyword" placeholder="请输入标题/简介/标签进行搜索" prefix-icon="Search" @input="handleSearch"
+              @clear="handleSearch"></el-input>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="search-wrap mobile-search">
+      <div class="search-input-box">
+        <el-input v-model="searchKeyword" placeholder="请输入标题/简介/标签进行搜索" prefix-icon="Search" @input="handleSearch"
+          @clear="handleSearch"></el-input>
+      </div>
+    </div>
+
+    <div class="scroll-container" @scroll="handleScroll">
+      <div class="sub-category-wrap" v-if="currentSubCategory.length > 0 && activeTopNav !== '智能推荐'">
+        <div class="sub-category-label">{{ activeTopNav }}：</div>
+        <div class="sub-category-list">
+          <button v-for="subItem in currentSubCategory" :key="subItem"
+            :class="['sub-category-btn', activeSubItem === subItem ? 'active' : '']"
+            @click="handleSubItemClick(subItem)">
+            {{ subItem }}
+          </button>
+        </div>
+      </div>
+
+      <div class="filter-bar" v-if="activeTopNav !== '智能推荐'">
+        <button v-for="filter in filters" :key="filter.id" :class="['filter-btn', filter.active ? 'active' : '']"
+          @click="handleFilterChange(filter.id)">
+          {{ filter.name }}
+        </button>
+      </div>
+
+      <!-- 智能推荐区域 -->
+      <div v-if="activeTopNav === '智能推荐'">
+        <div class="ai-refresh-wrap">
+          <button class="refresh-btn" @click="aiRecommend(true)" :disabled="isLoading">
+            <template v-if="isLoading">刷新中...</template>
+            <template v-else>刷新推荐</template>
+          </button>
+        </div>
+
+        <div v-for="group in aiRecommendContent" :key="group.subject" class="ai-group-wrap">
+          <div class="ai-summary">{{ group.summary }}</div>
+          <div class="ai-horizontal-scroll">
+            <div class="ai-scroll-content">
+              <div class="recommendation-grid ai-content-grid ">
+                <div class="content-card" v-for="item in group.recommendContent" :key="item.id + '-' + group.subject"
+                  @click="handleContentClick(item)" 
+                  @dblclick="handleContentClick(item)"
+                  @touchstart="handleLongPressStart(item)" 
+                  @touchend="handleLongPressEnd">
+                  <div class="content-image">
+                    <img :src="item.imgurl || '默认图片占位链接'" :alt="item.title" />
+                    <span v-if="item.isNew" class="new-badge">新</span>
+                    <span class="match-rate-badge">{{ item.matchRate }}%匹配</span>
+                  </div>
+                  <div class="content-info">
+                    <h3 class="content-title">{{ item.title }}</h3>
+                    <p class="content-desc">{{ item.description }}</p>
+                    <div class="content-meta ai-meta">
+                      <span class="meta-item">{{ item.category || "xxx" }}</span>
+                      <span class="meta-item">{{ item.subject }}</span>
+                      <span class="meta-item">{{ item.estimatedTime }}</span>
+                    </div>
+                    <div class="commend-reason">
+                      <span class="reason-label">推荐理由：</span>
+                      <span class="reason-text">{{ item.commendReason }}</span>
+                    </div>
+                    <div class="content-tags" v-if="item.tags && item.tags.length">
+                      <span class="tag-item" v-for="tag in item.tags" :key="tag">{{ tag }}</span>
+                    </div>
+                    <div class="learning-outcomes" v-if="item.learningOutcomes && item.learningOutcomes.length">
+                      <div class="outcomes-label">学习成果：</div>
+                      <ul class="outcomes-list">
+                        <li v-for="(outcome, idx) in item.learningOutcomes" :key="idx">{{ outcome }}</li>
+                      </ul>
+                    </div>
+                    <div class="provider-info">
+                      <span class="provider-label">提供方：</span>
+                      <span class="provider-name">{{ item.provider }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="empty-tip" v-if="aiRecommendContent.length === 0 && !isLoading">
+          暂无智能推荐内容，点击"刷新推荐"获取个性化推荐
+        </div>
+
+        <div class="loading-tip" v-if="isLoading">
+          正在为您生成个性化推荐...
+        </div>
+      </div>
+
+      <!-- 普通分类区域 -->
+      <div v-else>
+        <div class="recommendation-grid">
+          <div class="content-card" v-for="item in filteredContentList" :key="item.id"
+            @click="handleContentClick(item)" 
+            @dblclick="handleContentClick(item)"
+            @touchstart="handleLongPressStart(item)" 
+            @touchend="handleLongPressEnd">
+            <div class="content-image">
+              <img :src="item.imageUrl" :alt="item.title" />
+              <span v-if="item.isNew" class="new-badge">新</span>
+            </div>
+            <div class="content-info">
+              <h3 class="content-title">{{ item.title }}</h3>
+              <p class="content-desc">{{ item.description }}</p>
+              <div class="content-meta">
+                <span class="meta-left">
+                  <span class="meta-tag">{{ categoryToTopNavMap[item.category] }}</span>
+                  <span class="meta-tag">{{ item.subject }}</span>
+                </span>
+                <span class="meta-right">
+                  <span class="meta-view">{{ item.viewCount }} 浏览</span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="empty-tip" v-if="filteredContentList.length === 0">
+            未找到匹配“{{ searchKeyword }}”的内容，请更换关键词重试
+          </div>
+
+          <div class="loading-tip" v-if="isLoading && hasMore">
+            正在加载更多...
+          </div>
+
+          <div class="no-more-tip" v-if="!hasMore && filteredContentList.length > 0">
+            已加载全部内容
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-bar">
+      <div class="tab-item" v-for="item in tabList" :key="item.name" :class="{ active: activeTab === item.name }"
+        @click="handleTabClick(item)">
+        <component :is="item.icon" size="24" />
+        <div class="tab-name">{{ item.name }}</div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { House, Flag, Star, Timer, User, Search, Refresh } from '@element-plus/icons-vue'
+import { ElInput } from 'element-plus'
+import { getAllSourse, getAiCommend, AddViews } from './content-recommend'
+import { StorageUtil } from '../../../components/StorageUtil'
+
+const router = useRouter()
+let longPressTimer = null
+
+const categoryToTopNavMap = ref({
+  'basic': '基础学科',
+  'computer': '计算机',
+  'language': '语言考试',
+  'certification': '职业认证',
+  'skill': '技能提升',
+  'recommend': '智能推荐'
+})
+const topNavList = ref([
+  { label: '基础学科' },
+  { label: '计算机' },
+  { label: '语言考试' },
+  { label: '职业认证' },
+  { label: '技能提升' },
+  { label: '智能推荐' }
+])
+const activeTopNav = ref('基础学科')
+
+const currentCategory = computed(() => {
+  console.log("activetab", activeTopNav.value)
+  return Object.keys(categoryToTopNavMap.value).find(
+    key => categoryToTopNavMap.value[key] === activeTopNav.value
+  )
+})
+
+const subCategoryMap = ref({
+  '基础学科': ['数学', '语文', '英语', '物理', '化学', '生物', '历史', '地理', '政治'],
+  '计算机': ['前端', '后端', '数据', 'python', '人工智能', '其他'],
+  '语言考试': ['四级', '六级', '考研英语', '雅思', '托福', '日语N1/N2'],
+  '职业认证': ['教师资格证', '会计初级', 'PMP', 'CPA', '法考', '项目管理'],
+  '技能提升': ['办公软件', '演讲表达', '写作技巧', '时间管理'],
+  '智能推荐': []
+})
+
+const activeSubItem = ref('')
+const searchKeyword = ref('')
+const filters = ref([
+  { id: 'all', name: '全部', active: true },
+  { id: 'hot', name: '热门', active: false },
+  { id: 'new', name: '最新', active: false },
+  { id: 'favorites', name: '已收藏', active: false }
+])
+
+const recommendedContent = ref([])
+const aiRecommendContent = ref([])
+const currentPage = ref(1)
+const pageSize = ref(12)
+const hasMore = ref(true)
+const isLoading = ref(false)
+
+const activeTab = ref('推荐')
+
+
+const getProgressPath = () => {
+  const userId = StorageUtil.getRawString('user_userid')
+   console.log(userId)
+  return userId == "admin"
+    ? '/content_recommend/content-admin/content-admin' 
+    : '/content_recommend/content-recommend/content-recommend'
+   
+}
+
+// 底部Tab列表
+const tabList = ref([
+  { name: '首页', icon: House, path: '/Home' },
+  { name: '计划', icon: Flag, path: '/study_plan/study-plan/study-plan' },
+  { name: '推荐', icon: Star, path: getProgressPath() },
+  { name: '进度', icon: Timer, path: "" },
+  { name: '个人', icon: User, path: '/personal_center/profile' }
+])
+
+
+const filteredContentList = computed(() => {
+  let list = [...recommendedContent.value]
+
+  const activeFilter = filters.value.find(f => f.active)
+  if (activeFilter.id === 'hot') {
+    list = list.sort((a, b) => b.viewCount - a.viewCount)
+  } else if (activeFilter.id === 'new') {
+    list = list.sort((a, b) => new Date(b.updateTime) - new Date(a.updateTime))
+  } else if (activeFilter.id === 'favorites') {
+    list = list.filter(item => item.favorites === true);
+  }
+
+  if (searchKeyword.value.trim()) {
+    const keyword = searchKeyword.value.trim().toLowerCase()
+    list = list.filter(item => {
+      const matchTitle = item.title.toLowerCase().includes(keyword)
+      const matchDesc = item.description.toLowerCase().includes(keyword)
+      const matchTag = item.category.toLowerCase().includes(keyword)
+      return matchTitle || matchDesc || matchTag
+    })
+  }
+
+  return list
+})
+
+const currentSubCategory = computed(() => {
+  const subList = subCategoryMap.value[activeTopNav.value] || []
+  if (subList.length > 0 && !activeSubItem.value) {
+    activeSubItem.value = subList[0]
+  }
+  return subList
+})
+
+const handleTopNavClick = (label) => {
+  activeTopNav.value = label
+  activeSubItem.value = ''
+  refreshContentByCategory()
+}
+
+const aiRecommend = async (isRefresh = false) => {
+  activeTopNav.value = '智能推荐'
+  activeSubItem.value = ''
+  isLoading.value = true
+  hasMore.value = false
+
+  try {
+    const param = {
+      userId: StorageUtil.getRawString('user_userid'),
+      clickTime: isRefresh ? 0 : Date.now()
+    }
+    const res = await getAiCommend(param)
+    if (res.code == 200) {
+      aiRecommendContent.value = res.data || []
+      console.log("aiRecommend", aiRecommendContent)
+    }
+  } catch (e) {
+    console.error('获取智能推荐内容失败:', e)
+    aiRecommendContent.value = []
+  } finally {
+    isLoading.value = false
+  }
+}
+
+
+const handleSubItemClick = (item) => {
+  activeSubItem.value = item
+  refreshContentByCategory()
+}
+
+const handleSearch = () => {
+  console.log('搜索关键词：', searchKeyword.value)
+}
+
+const handleFilterChange = (filterId) => {
+  filters.value = filters.value.map(filter => ({
+    ...filter,
+    active: filter.id === filterId
+  }))
+  currentPage.value = 1
+  recommendedContent.value = []
+  hasMore.value = true
+  loadRecommendedContent()
+}
+
+const loadRecommendedContent = async () => {
+  if (activeTopNav.value === '智能推荐' || isLoading.value) return
+
+  isLoading.value = true
+  try {
+    const res = await getAllSourse();
+    if (res.code === 200) {
+      let filteredByCategory = res.data.filter(item => {
+        const isCategoryMatch = item.category === currentCategory.value
+        const isSubjectMatch = activeSubItem.value ? item.subject === activeSubItem.value : true
+        return isCategoryMatch && isSubjectMatch
+      })
+      const newContent = filteredByCategory
+        .filter(item => !recommendedContent.value.some(existing => existing.id === item.id))
+        .map(item => ({
+          id: item.id,
+          title: item.title,
+          description: item.description,
+          url: item.url,
+          imageUrl: item.imgurl,
+          category: item.category,
+          subject: item.subject,
+          viewCount: item.page_views || Math.floor(Math.random() * 10000),
+          page_views: item.page_views || Math.floor(Math.random() * 10000),
+          updateTime: item.updateTime,
+          favorites: item.favorites || false,
+          isNew: item.id > recommendedContent.value.length,
+          difficulty: item.difficulty || 0,
+          recommendRat: item.recommendRat || '0%'
+        }));
+
+      if (currentPage.value === 1) {
+        recommendedContent.value = newContent;
+      } else {
+        recommendedContent.value = [...recommendedContent.value, ...newContent];
+      }
+
+      if (newContent.length < 1) {
+        hasMore.value = false;
+      } else {
+        currentPage.value++;
+      }
+    } else {
+      console.error('获取资源失败:', res.msg);
+    }
+  } catch (error) {
+    console.error('请求资源时发生错误:', error);
+  } finally {
+    isLoading.value = false;
+  }
+}
+
+const handleScroll = (e) => {
+  if (activeTopNav.value === '智能推荐') return
+
+  const container = e.target
+  const isBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 50
+  if (isBottom && hasMore.value && !isLoading.value) {
+    loadRecommendedContent()
+  }
+}
+
+const refreshContentByCategory = () => {
+  if (activeTopNav.value === '智能推荐') return
+
+  currentPage.value = 1
+  recommendedContent.value = []
+  hasMore.value = true
+  loadRecommendedContent()
+}
+
+// 统一处理内容点击（单击/双击/长按）
+const handleContentClick = async (item) => {
+  const isAI = activeTopNav.value === '智能推荐'
+  StorageUtil.set('content_detail_id', { id: item.id, isAI })
+  const param ={
+    userId:StorageUtil.getRawString('user_userid'),
+    id:item.id,
+    isNew:false,
+  }
+  const res = await AddViews(param)
+  if(res.code == 200)
+  {
+    console.log("观看数+1");
+  }
+  console.log(item.id,"缓存",isAI)
+  router.push('../content-details/content-details')
+}
+const handleTabClick = (item) => {
+  activeTab.value = item.name
+  router.push(item.path)
+}
+
+// 长按开始 - 1秒后触发跳转
+const handleLongPressStart = (item) => {
+  if (longPressTimer) clearTimeout(longPressTimer)
+  longPressTimer = setTimeout(() => {
+    handleContentClick(item)
+  }, 1000)
+}
+
+// 长按结束 - 清除定时器
+const handleLongPressEnd = () => {
+  if (longPressTimer) clearTimeout(longPressTimer)
+}
+
+onMounted(() => {
+  if (activeTopNav.value !== '智能推荐') {
+    loadRecommendedContent()
+  }
+})
+</script>
+
+<style scoped>
+.top-nav {
+  display: flex;
+  align-items: center;
+  padding: 8px 0;
+  background-color: #fff;
+  border-bottom: 1px solid #e8e8e8;
+  min-height: 56px;
+  position: relative;
+  z-index: 999;
+  width: 100%;
+}
+
+.nav-buttons {
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  scrollbar-width: none;
+  white-space: nowrap;
+  flex: 2;
+  padding: 0 10px;
+  -webkit-overflow-scrolling: touch;
+  gap: 10px;
+  height: 56px;
+  position: static;
+  background-color: transparent;
+  width: 100%;
+}
+
+.nav-buttons::-webkit-scrollbar {
+  display: none;
+}
+
+.top-nav-btn {
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  font-size: 15px;
+  color: #333;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.top-nav-btn.active {
+  color: #1890ff;
+  font-weight: 500;
+}
+
+.top-nav-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 24px;
+  height: 2px;
+  background-color: #1890ff;
+  border-radius: 1px;
+}
+
+.search-wrap {
+  box-sizing: border-box;
+}
+
+.search-input-box {
+  width: 100%;
+}
+
+:deep(.el-input) {
+  --el-input-height: 40px;
+}
+
+:deep(.el-input__inner) {
+  border-radius: 20px;
+  padding-left: 40px;
+  border: 1px solid #e8e8e8;
+}
+
+:deep(.el-input__prefix) {
+  left: 12px;
+  color: #999;
+}
+
+.pc-search {
+  padding: 6px 16px;
+  min-width: 280px;
+  flex: 1;
+  max-width: 33.333%;
+  display: block;
+}
+
+.mobile-search {
+  padding: 8px 16px;
+  background-color: #fff;
+  border-bottom: 1px solid #e8e8e8;
+  display: none;
+  height: 56px;
+  width: 100%;
+  position: relative;
+  z-index: 999;
+}
+
+.scroll-container {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  transform: none !important;
+  will-change: auto !important;
+  width: 100%;
+  position: relative;
+  z-index: 1;
+  overscroll-behavior-y: contain;
+  height: calc(100vh - 112px);
+}
+
+.sub-category-wrap {
+  padding: 12px 20px;
+  background-color: #fff;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.sub-category-label {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 8px;
+  display: inline-block;
+}
+
+.sub-category-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.sub-category-btn {
+  padding: 6px 14px;
+  background-color: #f5f7fa;
+  border: 1px solid #e8e8e8;
+  border-radius: 16px;
+  font-size: 14px;
+  color: #333;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sub-category-btn.active {
+  background-color: #e6f7ff;
+  color: #1890ff;
+  border-color: #91d5ff;
+}
+
+.filter-bar {
+  display: flex;
+  gap: 12px;
+  padding: 16px 20px;
+  background-color: #fff;
+  margin: 0 0 10px 0;
+  border-radius: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.filter-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.filter-btn {
+  padding: 6px 16px;
+  background-color: #f5f7fa;
+  border: 1px solid #e8e8e8;
+  border-radius: 16px;
+  color: #666;
+  font-size: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+  outline: none;
+}
+
+.filter-btn.active {
+  background-color: #1890ff;
+  color: #fff;
+  border-color: #1890ff;
+}
+
+.recommendation-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  padding: 0 20px;
+}
+
+.content-card {
+  background-color: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  cursor: pointer;
+}
+
+.content-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.content-image {
+  position: relative;
+  width: 100%;
+  height: 160px;
+  overflow: hidden;
+}
+
+.content-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s ease;
+}
+
+.content-card:hover .content-image img {
+  transform: scale(1.05);
+}
+
+.new-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background-color: #ff4d4f;
+  color: white;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.match-rate-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background-color: #52c41a;
+  color: white;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.content-info {
+  padding: 16px;
+}
+
+.content-title {
+  font-size: 16px;
+  color: #333;
+  margin-bottom: 8px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  height: 40px;
+  font-weight: 500;
+}
+
+.content-desc {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 12px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  height: 36px;
+  line-height: 1.5;
+}
+
+.content-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #999;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.meta-left {
+  display: flex;
+  gap: 6px;
+}
+
+.meta-tag {
+  padding: 2px 8px;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+  color: #666;
+}
+
+.meta-right {
+  margin-left: auto;
+}
+
+.meta-view {
+  color: #888;
+}
+
+.ai-refresh-wrap {
+  padding: 16px 20px;
+  text-align: right;
+}
+
+.refresh-btn {
+  padding: 8px 16px;
+  background-color: #f5f7fa;
+  border: 1px solid #e8e8e8;
+  border-radius: 4px;
+  color: #666;
+  font-size: 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.refresh-btn:hover {
+  background-color: #e6f7ff;
+  color: #1890ff;
+  border-color: #91d5ff;
+}
+
+.refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ai-group-wrap {
+  margin-bottom: 24px;
+}
+
+.ai-summary {
+  font-size: 14px;
+  color: #999;
+  padding: 8px 20px;
+  margin-bottom: 8px;
+}
+
+.ai-content-grid {
+  display: flex;
+  gap: 16px;
+  padding: 0;
+  margin: 0;
+}
+.ai-content-grid .content-card {
+  flex: 0 0 280px;
+  width: 280px; 
+  max-width: 280px; 
+}
+
+.ai-horizontal-scroll {
+  width: 100%;
+  overflow-x: auto; 
+  overflow-y: hidden;
+  padding: 0 20px 8px 20px; 
+  -webkit-overflow-scrolling: touch;
+}
+
+.ai-scroll-content {
+  display: flex; /* 自适应内容宽度 */
+  min-width: 100%; /* 保证容器至少占满父级宽度 */
+  width: fit-content; 
+}
+
+.ai-meta {
+  margin-bottom: 8px;
+}
+
+.commend-reason {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+.reason-label {
+  font-weight: 500;
+  color: #333;
+}
+
+.content-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.tag-item {
+  padding: 2px 8px;
+  background-color: #f5f7fa;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #666;
+}
+
+.learning-outcomes {
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.outcomes-label {
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.outcomes-list {
+  padding-left: 16px;
+  color: #666;
+  line-height: 1.5;
+}
+
+.provider-info {
+  font-size: 13px;
+  color: #666;
+}
+
+.provider-label {
+  font-weight: 500;
+  color: #333;
+}
+
+.empty-tip {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 60px 0;
+  color: #999;
+  font-size: 14px;
+}
+
+.loading-tip {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 20px 0;
+  color: #999;
+  font-size: 14px;
+}
+
+.no-more-tip {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 20px 0;
+  color: #999;
+  font-size: 14px;
+}
+
+@media (max-width: 767px) {
+    .pc-search {
+    display: none !important;
+  }
+
+  .mobile-search {
+    display: block !important;
+    position: fixed !important;
+    top: 56px !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 999 !important;
+  }
+
+  .top-nav {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 999 !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    flex-direction: row;
+  }
+
+  .nav-buttons {
+    height: 56px;
+    gap: 8px;
+    width: 100%;
+    flex: none;
+  }
+
+  .top-nav-btn {
+    font-size: 14px;
+    padding: 6px 12px;
+  }
+
+  .top-nav-btn.active::after {
+    width: 20px;
+  }
+
+  .scroll-container {
+    padding-top: 112px !important;
+    margin-top: 0 !important;
+    height: calc(100vh - 112px) !important;
+  }
+
+  .recommendation-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+  }
+
+  .content-image {
+    height: 100px;
+    z-index: 1 !important;
+  }
+
+  .content-info {
+    padding: 12px;
+  }
+
+  .content-title {
+    font-size: 14px;
+    height: 34px;
+  }
+
+  .content-desc {
+    display: none;
+  }
+
+  .ai-summary {
+    font-size: 13px;
+    padding: 8px 12px;
+  }
+
+  .commend-reason,
+  .provider-info,
+  .learning-outcomes {
+    font-size: 12px;
+  }
+
+  .content-tags {
+    gap: 4px;
+  }
+
+  .tag-item {
+    font-size: 11px;
+    padding: 1px 6px;
+  }
+
+  .content-meta {
+    font-size: 5px !important;
+    padding-top: 8px;
+    margin-top: 8px;
+  }
+
+  .ai-horizontal-scroll::-webkit-scrollbar {
+    display: none;
+  }
+}
+</style>
