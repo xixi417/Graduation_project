@@ -3,14 +3,14 @@ import request from '@/utils/request';
 
 // export function register(data) {
 //   return request({
-//     url: '/api/register',
+//     url: '/api/register/register',
 //     method: 'post',
 //     data
 //   });
 // }
 // export const sendCode = async (data) => {
 //   return request({
-//     url: '/api/sendCode',
+//     url: '/api/register/sendCode',
 //     method: 'get',
 //     data
 //   });
@@ -24,10 +24,11 @@ export const register = async (data) => {
     setTimeout(() => {
        
       resolve({
-        success: true,
-        userId: `user_${Date.now()}`,
+        code: 200,
         message: '注册成功',
-        token: 'mock_jwt_token_here' 
+        data:{
+          userId: `11111`,
+        }
       })
       
     
@@ -38,3 +39,17 @@ export const register = async (data) => {
     }, 1000)
   })
 }
+  export const sendCode = async (data) => {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        resolve({
+          code: 200,
+          data: {
+            code: '123456' 
+          },
+          message: '验证码发送成功'
+        })
+      }, 1000)
+    
+    })
+  }

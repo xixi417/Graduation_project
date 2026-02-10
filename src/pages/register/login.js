@@ -3,7 +3,7 @@ import request from '@/utils/request';
 
 // export function login(data) {
 //   return request({
-//     url: '/api/login',
+//     url: '/api/register/login',
 //     method: 'post',
 //     data
 //   });
@@ -12,9 +12,11 @@ export const login = async (data) => {
   return new Promise((resolve) => {
     setTimeout(() => {
       resolve({
-        success: true,
-        userId: `user_${Date.now()}`,
-        message: '注册成功',
+        code: 200,
+        msg: '登录成功',
+        data: {
+          userId: `111111`,
+        }
       })
     
     

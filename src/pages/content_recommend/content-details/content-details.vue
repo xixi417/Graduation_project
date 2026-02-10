@@ -138,7 +138,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { getAIDetails, getNormalDetails, updateFavorite } from './content-details'
+import { getAIDetails, getNormalDetails, updateFavorites } from './content-details'
 import { StorageUtil } from '../../../components/StorageUtil'
 
 const router = useRouter()
@@ -211,24 +211,21 @@ const getDifficultyText = (difficulty) => {
 }
 
 // 切换收藏状态
-const toggleFavorite = async () => {
+const toggleFavorites = async () => {
   resource.value.favorites = !resource.value.favorites
   const param = {
       userId: StorageUtil.getRawString('user_userid'),
       id: aiSou.value.id || normalSou.value.id,
       favorites: resource.value.favorites ? 1 : 0
     }
+  const res = await updateFavorite(param)
+  if (res.code == 200) {
     console.log("收藏参数", param);
-  if (resource.value.favorites) {
-    console.log("收藏成功");
-  } else {
+  }else {
     console.log("已取消收藏");
   }
 
-  const res = await updateFavorite(param)
-  if (res.code == 200) {
-    console.log(param);
-  }
+  
 }
 
 // 前往学习资源

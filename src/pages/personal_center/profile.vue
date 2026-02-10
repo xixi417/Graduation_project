@@ -128,19 +128,12 @@ const tabList = ref([
 const activeTab = ref('个人')
 
 
-// 初始化用户信息（优先读取本地存储，无则用默认值）
+// 初始化用户信息（优先读取本地存储，无则从接口获得数据）
 const initUserInfo = () => {
   let storedInfo = null
   try {
-    // 微信小程序环境
-    if (typeof wx !== 'undefined' && wx.getStorageSync) {
-      storedInfo = wx.getStorageSync(USER_INFO_STORAGE_KEY)
-    }
-    // 网页端环境
-    else {
-      const storedStr = localStorage.getItem(USER_INFO_STORAGE_KEY)
-      storedInfo = storedStr ? JSON.parse(storedStr) : null
-    }
+    storedInfo = StorageUtil.get(USER_INFO_STORAGE_KEY);
+    
     if (storedInfo && typeof storedInfo === 'object') {
       console.log('有效存储数据:', storedInfo)
     } else {

@@ -1,12 +1,14 @@
 // study_plan.js
 
+import { ta, tr } from "element-plus/es/locales.mjs";
+
 
 
 
 
 // export const getTaskList = (userid) => {
 //   return request ({
-//     url: '/api/get-task-list',
+//     url: '/api/study-plan/get-task-list',
 //     method: 'get'
 //     userid
 // })
@@ -22,9 +24,9 @@ export const getTaskList = (params) => {
         msg: '获取任务列表成功',
         data: [
           {
-            id: 1, // 任务唯一标识
+            id: 1, // 主任务id
             planName: '3个月掌握Vue3', // 主任务名称
-            isExpanded: false, // 子任务展开状态
+            isExpanded: true  , // 是否有子任务
             status:"not_started",
             subtasks: [ // 子任务列表
               { id: 101, planName: '学习Vue3组合式API', preId: 1 , status:"not_started",targetHours:10},
@@ -35,17 +37,17 @@ export const getTaskList = (params) => {
           {
             id: 2,
             planName: '每日英语打卡',
-            isExpanded: false,
+            isExpanded: true,
             status:"in_progress",
             subtasks: [
-              { id: 201, planName: '背50个单词', preId: 2, status:"in_progress",targetHours:100 },
-              { id: 202, planName: '跟读15分钟听力', preId: 2, status:"not_started",targetHours:50}
+              // { id: 201, planName: '背50个单词', preId: 2, status:"in_progress",targetHours:100 },
+              // { id: 202, planName: '跟读15分钟听力', preId: 2, status:"not_started",targetHours:50}
             ]
           },
           {
             id: 3,
             planName: '数据结构刷题',
-            isExpanded: false,
+            isExpanded: true,
             status:"abandoned",
             subtasks: [
               { id: 301, planName: '每日2道链表题', preId: 3,status:"abandoned", targetHours:15  },
@@ -57,28 +59,28 @@ export const getTaskList = (params) => {
     }, 1000); // 模拟1秒接口延迟
   });
 };
-// export const deleteTask = (taskId) => {
+// export const deleteTask = (param) => {
 //   return request ({
-//     url: `/api/delete-task/${taskId}`,
+//     url: '/api/study-plan/delete-task',
 //     method: 'delete'
 // })
 // }
-// export const deleteSubTask = (taskId, subTaskId) => {
+// export const deleteSubTask = (param) => {
 //   return request ({
-//     url: `/api/delete-subtask/${taskId}/subtask/${subTaskId}`,
+//     url: `/api/study-plan/delete-subtask`,
 //     method: 'delete'
 // })
 // }
-// export const updateTask = (taskId, taskData) => {
+// export const updateTask = (param) => {
 //   return request ({
-//     url: `/api/update-task/${taskId}`,
+//     url: `/api/study-plan/update-task`,
 //     method: 'put',
 //     data: taskData
 // })
 // }
-// export const updateSubTask = (taskId, subTaskId, subTaskData) => {
+// export const updateSubTask = (param) => {
 //   return request({
-//     url: `/api/update-subtask/${taskId}/subtask/${subTaskId}`, // 路径拼接主/子任务ID
+//     url: `/api/study-plan/update-subtask`, // 路径拼接主/子任务ID
 //     method: 'PUT',
 //     data: subTaskData, 
 //   });
@@ -196,7 +198,7 @@ export const getAiSubtaskRecommendations = (params) =>{
 
 // export const getAiCom = (prompt) => {
 //   return Request({
-//     url: '/api/ai-completion',
+//     url: '/api/add-plan/ai-completion',
 //     method: 'get',
 //     data: { prompt }
 //   })
@@ -275,7 +277,7 @@ planName: '',
 
 // export const sendTask = (data) =>{
 //   return Request({
-//     url:'/api/sendnewTask',
+//     url:'/api/add-plan/sendnewTask',
 //     method:'post',
 //     data
 //   })
@@ -286,6 +288,9 @@ export const sendTask = (data) =>{
       resolve({
         code: 200,
         msg: 'success',
+        data:{
+          taskId: 12345
+        }
       });
     },800);
   })

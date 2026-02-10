@@ -17,8 +17,8 @@
           <input 
             type="text" 
             class="input-field" 
-            placeholder="账号名/邮箱/手机号"
-            v-model="form.userid"
+            placeholder="账号名"
+            v-model="form.userName"
             maxlength="50"
           >
 
@@ -34,7 +34,7 @@
           </div>
 
           <!-- 登录按钮 -->
-          <button class="login-btn" @click="handleLogin" :disabled="!form.userid || !form.password || !form.agree">
+          <button class="login-btn" @click="handleLogin" :disabled="!form.userName || !form.password || !form.agree">
             登录
           </button>
 
@@ -120,11 +120,12 @@
 import { ref } from 'vue'
 import { login } from './login.js'
 import { useRouter } from 'vue-router'
+import { StorageUtil } from '../../components/StorageUtil.js'
 import CryptoJS from 'crypto-js';
 
 // 表单数据
 const form = ref({
-  userid: '',
+  userName: '',
   password: '',
   agree: false
 })
@@ -135,35 +136,31 @@ const loading = ref(false)
 const router = useRouter()
 
 const handleLogin = async () => {
-  if (!form.value.userid || !form.value.password || !form.value.agree) {
-    if (!form.value.userid) alert('请输入账号名/邮箱/手机号')
+  if (!form.value.userName || !form.value.password || !form.value.agree) {
+    if (!form.value.userName) alert('请输入账号名')
     else if (!form.value.password) alert('请输入登录密码')
     else if (!form.value.agree) alert('请同意服务协议和隐私政策')
     return
   }
   
   loading.value = true
- // router.push('/Home')
   const hashedPassword = CryptoJS.SHA256(form.value.password).toString();
   try{
     const response = await login({
-      userid: form.value.userid,
+      userName: form.value.userName,
       password: form.value.password,
       timestamp: Date.now()
     })
-
-    if(response.success){
+    console.log("userId:",response.data.userId)
+    console.log("userName:",form.value.userName)
+ 
+    if(response.code === 200 ){
       // alert('登录成功！')
-      if (typeof wx !== 'undefined' && wx.setStorageSync) {
-        // 小程序环境
-        wx.setStorageSync('user_userid', form.value.userid);
-      } else {
-        // 浏览器环境
-        localStorage.setItem('user_userid', form.value.userid);
-      }
+      StorageUtil.setItem('user_userid',response.data.userId)
+      StorageUtil.setItem('user_username',form.value.userName)
       router.push('/Home')
     } else {
-      alert(`登录失败：${response.message}`)
+      alert(`登录失败：${response.msg}`)
     }
   }catch(error){
     alert(`登录异常：${error.message}`)

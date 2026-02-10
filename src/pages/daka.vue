@@ -20,8 +20,8 @@
           <h2 class="daka-title">今日打卡</h2>
           <p class="daka-date" :style="{ borderBottom: '2px solid #409eff' }">{{ todayDateText }}</p>
           <p class="daka-status" :style="{ color: isDakaed ? '#67C23A' : '#f56c6c' }">{{ isDakaed ? '已打卡' : '未打卡' }}</p>
-          <button class="daka-btn" @click="handleDaka" :disabled="isDakaed">
-            {{ isDakaed ? '今日已打卡' : '立即打卡' }}
+          <button class="daka-btn" @click="handleDaka" :disabled="isDakaed || isLoading">
+            {{ isLoading ? '打卡中...' : (isDakaed ? '今日已打卡' : '立即打卡') }}
           </button>
           <p class="daka-tip">每日可打卡 1 次，打卡时间 00:00-23:59</p>
         </div>
@@ -53,8 +53,8 @@
           <p class="daka-status mobile-daka-status" :style="{ color: isDakaed ? '#67C23A' : '#f56c6c' }">
             {{ isDakaed ? '已打卡' : '未打卡' }}
           </p>
-          <button class="daka-btn mobile-daka-btn" @click="handleDaka" :disabled="isDakaed">
-            {{ isDakaed ? '今日已打卡' : '立即打卡' }}
+          <button class="daka-btn mobile-daka-btn" @click="handleDaka" :disabled="isDakaed || isLoading">
+            {{ isLoading ? '打卡中...' : (isDakaed ? '今日已打卡' : '立即打卡') }}
           </button>
           <p class="daka-tip mobile-daka-tip">每日可打卡 1 次，打卡时间 00:00-23:59</p>
         </div>
@@ -141,28 +141,94 @@
 <script setup>
 import { ref, computed, onMounted, watch, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
-import  StorageUtil  from '.././components/StorageUtil';
+import { StorageUtil } from '../components/StorageUtil.js';
+import { pa } from 'element-plus/es/locales.mjs';
 const router = useRouter();
 
-// 模拟接口
+// ===================== 接口层优化 =====================
+// 1. 获取打卡数据接口（适配真实后端逻辑）
+// 参数：{ userId, month: 'YYYY-MM' }
+// 返回：{ code, msg, data: [{ daka_date: 'YYYY-MM-DD', isDakaed: boolean }, ...] }
 const getDaka = async (param) => {
-  return new Promise(resolve => {
-    setTimeout(() => {
-      const mockData = {
-        "2024-05-01": { isDakaed: true },
-        "2024-05-02": { isDakaed: true },
-        "2024-05-03": { isDakaed: false },
-        "2024-05-04": { isDakaed: true },
-        "2024-05-05": { isDakaed: true },
-      };
-      resolve(mockData);
-    }, 300);
-  });
+  try {
+    // 真实环境替换为 axios/fetch 请求
+    // const response = await axios.post('/api/daka/get', param);
+    // return response.data;
+
+    // 模拟接口（保留用于测试，真实环境删除）
+    return new Promise(resolve => {
+      setTimeout(() => {
+        // 模拟按月份返回数据
+        const mockData = {
+          code: 200,
+          msg: 'success',
+          data: [
+            { daka_date: `${param.month}-01`, isDakaed: true },
+            { daka_date: `${param.month}-02`, isDakaed: true },
+            { daka_date: `${param.month}-03`, isDakaed: false },
+            { daka_date: `${param.month}-04`, isDakaed: true },
+            { daka_date: `${param.month}-05`, isDakaed: true },
+            { daka_date: `${param.month}-06`, isDakaed: false },
+            { daka_date: todayDateKey.value, isDakaed: false }, // 今日默认未打卡
+          ].filter(item => item.daka_date.startsWith(param.month))
+        };
+        resolve(mockData);
+      }, 300);
+    });
+  } catch (error) {
+    console.error('获取打卡数据失败:', error);
+    return {
+      code: 500,
+      msg: '获取打卡数据失败',
+      data: []
+    };
+  }
 };
-// 核心数据
+
+// 2. 提交打卡接口（适配真实后端逻辑）
+// 参数：{ userId, date: 'YYYY-MM-DD' }
+// 返回：{ code, msg, data: {} }
+const sendDaka = async (param) => {
+  try {
+    // 真实环境替换为 axios/fetch 请求
+    // const response = await axios.post('/api/daka/submit', param);
+    // return response.data;
+    return new Promise(resolve => {
+      setTimeout(() => {
+        // 模拟重复打卡校验
+        const todayKey = todayDateKey.value;
+        if (param.date === todayKey && isDakaed.value) {
+          resolve({
+            code: 400,
+            msg: '今日已打卡，无需重复打卡'
+          });
+          return;
+        }
+        resolve({
+          code: 200,
+          msg: '打卡成功',
+          data: {
+            daka_date: param.date,
+            isDakaed: true
+          }
+        });
+      }, 300);
+    });
+  } catch (error) {
+    console.error('打卡提交失败:', error);
+    return {
+      code: 500,
+      msg: '打卡失败，请重试',
+      data: {}
+    };
+  }
+};
+
+// ===================== 核心数据与计算属性 =====================
 const STORAGE_KEY = 'dailyDakaData';
 const todayDate = ref(new Date());
 const currentCalendarDate = ref(new Date());
+const isLoading = ref(false); // 打卡加载状态
 
 // 自定义日历 - 年月选择器数据
 const yearOptions = ref([]);
@@ -234,22 +300,43 @@ const totalDaysOfMonth = computed(() => {
   return new Date(todayDate.value.getFullYear(), todayDate.value.getMonth() + 1, 0).getDate();
 });
 
+// ===================== 数据处理方法 =====================
+// 1. 获取所有打卡数据（本地+接口）
 const getAllDakaData = async (targetMonth = '') => {
-  let localData = StorageUtil.get(STORAGE_KEY, {});
-  const userId = StorageUtil.get('user_userid');
-  // console.log('用户ID:', localData);
-  // console.log('本地打卡数据:', localStorage.getItem('user_userid'));
+  try {
+    let localData = StorageUtil.get(STORAGE_KEY, {});
+    const userId = StorageUtil.get('user_userid');
+    
+    // 无本地数据 或 目标月份无数据时拉取接口
+    if (!userId) {
+      showMessage('未检测到用户信息，请登录', 'error');
+      return localData;
+    }
 
-  if (Object.keys(localData).length === 0 || (targetMonth && !Object.keys(localData).some(key => key.startsWith(targetMonth)))) {
-    const param = {
-      userId,
-      month: targetMonth || currentMonthKey.value
-    };
-    const apiData = await getDaka(param);
-    localData = { ...localData, ...apiData };
-    StorageUtil.set(STORAGE_KEY, localData);
+    if (Object.keys(localData).length === 0 || (targetMonth && !Object.keys(localData).some(key => key.startsWith(targetMonth)))) {
+      const param = {
+        userId,
+        month: targetMonth || currentMonthKey.value
+      };
+      const apiData = await getDaka(param);
+      if (apiData.code === 200 && apiData.data.length) {
+        // 格式化接口数据为 { 'YYYY-MM-DD': { isDakaed: boolean }, ... }
+        const formattedData = apiData.data.reduce((acc, item) => {
+          acc[item.daka_date] = { isDakaed: item.isDakaed };
+          return acc;
+        }, {});
+        localData = { ...localData, ...formattedData };
+        StorageUtil.set(STORAGE_KEY, localData);
+      } else {
+        showMessage(apiData.msg || '获取打卡数据失败', 'error');
+      }
+    }
+    return localData;
+  } catch (error) {
+    console.error('获取打卡数据异常:', error);
+    showMessage('获取打卡数据异常', 'error');
+    return StorageUtil.get(STORAGE_KEY, {});
   }
-  return localData;
 };
 
 // 2. 拉取指定月份的打卡数据
@@ -293,7 +380,7 @@ const calculateContinuousDays = () => {
         break;
       }
     }
-  }else {
+  } else {
     let lastCheckedDay = 0;
     for (let i = checkedDaysArr.length - 1; i >= 0; i--) {
       if (checkedDaysArr[i] < todayDay) {
@@ -321,7 +408,9 @@ const updateMonthStats = () => {
   const isDakaedVal = allDakaData[todayDateKey.value]?.isDakaed || false;
   const checkedDays = getCurrentMonthCheckedDays();
   const totalTimesVal = checkedDays.size;
-  const punchRateVal = Math.round((totalTimesVal / passedDaysOfMonth.value) * 100) || 0;
+  const punchRateVal = passedDaysOfMonth.value > 0 
+    ? Math.round((totalTimesVal / passedDaysOfMonth.value) * 100) 
+    : 0;
   const continuousDaysVal = calculateContinuousDays();
 
   isDakaed.value = isDakaedVal;
@@ -335,12 +424,6 @@ const initDakaData = async () => {
   await getAllDakaData();
   updateMonthStats();
 };
-
-// 响应式数据
-const isDakaed = ref(false);
-const continuousDays = ref(0);
-const totalTimes = ref(0);
-const punchRate = ref(0);
 
 // 7. 判断指定日期是否打卡
 const isDateChecked = (dateStr) => {
@@ -359,11 +442,11 @@ const isToday = (day) => {
 };
 
 // 9. 保存打卡数据到本地
-const saveDakaDataToStorage = () => {
+const saveDakaDataToStorage = (dateKey, isDakaedVal) => {
   const allDakaData = StorageUtil.get(STORAGE_KEY, {});
-  allDakaData[todayDateKey.value] = {
-    isDakaed: isDakaed.value,
-    date: todayDateKey.value
+  allDakaData[dateKey] = {
+    isDakaed: isDakaedVal,
+    date: dateKey
   };
   StorageUtil.set(STORAGE_KEY, allDakaData);
 };
@@ -433,21 +516,55 @@ const showMessage = (text, type = 'success', duration = 2000) => {
   }, duration);
 };
 
-// 15. 打卡事件
+// 15. 打卡事件（核心优化）
 const handleDaka = async () => {
+  // 前置校验
   if (isDakaed.value) {
     showMessage('今日已打卡，无需重复打卡～', 'info');
     return;
   }
- 
-  isDakaed.value = true;
-  saveDakaDataToStorage();
-  updateMonthStats();
-  await getAllDakaData();
-  showMessage('打卡成功！', 'success');
-  
-  
+  if (isLoading.value) return;
+
+  const userId = StorageUtil.get('user_userid');
+  if (!userId) {
+    showMessage('未检测到用户信息，请先登录', 'error');
+    return;
+  }
+
+  try {
+    isLoading.value = true;
+    // 调用打卡接口
+    const param = {
+      userId,
+      date: todayDateKey.value
+    };
+    const response = await sendDaka(param);
+    console.log('打卡接口响应:', param, response);
+
+    if (response.code === 200) {
+      // 打卡成功：更新状态 + 保存本地 + 更新统计
+      isDakaed.value = true;
+      saveDakaDataToStorage(todayDateKey.value, true);
+      updateMonthStats();
+      showMessage(response.msg || '打卡成功！', 'success');
+    } else {
+      // 接口返回失败
+      showMessage(response.msg || '打卡失败', 'error');
+    }
+  } catch (error) {
+    console.error('打卡异常:', error);
+    showMessage('打卡异常，请重试', 'error');
+  } finally {
+    isLoading.value = false;
+  }
 };
+
+// ===================== 响应式数据与生命周期 =====================
+// 响应式数据
+const isDakaed = ref(false);
+const continuousDays = ref(0);
+const totalTimes = ref(0);
+const punchRate = ref(0);
 
 // 监听日历日期变化
 watch(currentCalendarDate, (newVal) => {

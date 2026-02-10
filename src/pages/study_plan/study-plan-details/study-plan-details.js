@@ -2,7 +2,7 @@
 //发送今日累计学习时间
 // export const sendDayStu  = (data) => {
 //   return Request({
-//     url: '/api/study-plan',
+//     url: '/api/study-plan-details/send-day-study-time',
 //     method: 'post',
 //     data
 //   })

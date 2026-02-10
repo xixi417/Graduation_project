@@ -313,7 +313,8 @@ const handleAiPlan = async () => {
 
     const submitParams = {
       ...formData.value,
-      existingBase: aiReference.value.existingBase
+      existingBase: aiReference.value.existingBase,
+      userId: StorageUtil.getRawString('user_userid')
     };
     console.log(submitParams);
     const res = await getAiCom(submitParams);

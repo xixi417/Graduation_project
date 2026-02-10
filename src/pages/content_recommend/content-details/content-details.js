@@ -124,15 +124,15 @@ export const getNormalDetails = async (param) => {
 //         }, 1000);
 //     })
 // }
-
-// export const updateFavorite = async (param) =>{
-//     return Request({
-//         url:'/api/update-favorite',
+ 
+// export const updateFavorites = async (param) =>{
+//     return Request({b
+//         url:'/api/update-favorites',
 //         method:'post',
 //         data
 //     })
 // }
-export const updateFavorite = async (param) => {
+export const updateFavorites = async (param) => {
     return new Promise((resolve) => {
         setTimeout(() => {
             resolve({
